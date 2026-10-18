@@ -10,7 +10,7 @@ dla trwających meczów i alarmuje, gdy:
 1. **Kurs nie pasuje do wyniku i minuty**: model Poissona liczy, ile goli powinno jeszcze
    paść, i porównuje z tempem, jakie wycenia rynek. Alarm przy >= 1.7x albo <= 0.6x normy.
 2. **Obrót jest duży** (domyślnie >= 5000) w lidze spoza topu (topowe ligi są pomijane).
-3. **Rynek goli ma większy obrót niż 1X2** tego samego meczu.
+3. **Rynek goli ma co najmniej 2x większy obrót niż 1X2** tego samego meczu.
 
 Alert = (2) oraz (1) lub (3). Przykład ze screena (Panama, 0-0 w 9', Over 1.5 FH po 1.70):
 rynek 59%, model 26% (fair ~3.85), obrót 31k.

@@ -189,10 +189,10 @@ def parse_line(market_name):
 
 
 def over_under(runners):
-    """Zwraca (over_price, under_price) – ostatni kurs, a jak go brak to najlepszy back."""
+    """Zwraca (over_price, under_price) – aktualny najlepszy back, a jak go brak to ostatni kurs."""
     over = under = None
     for runner in runners:
-        price = runner.get("last") or (runner["back"][0] if runner.get("back") else None)
+        price = (runner["back"][0] if runner.get("back") else None) or runner.get("last")
         name = runner.get("name", "").lower()
         if name.startswith("over"):
             over = price

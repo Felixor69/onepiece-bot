@@ -74,3 +74,11 @@ def test_helpers():
     assert estimate_minute("2026-10-18T20:00:00.000Z",
                            now=__import__("datetime").datetime(2026, 10, 18, 20, 9,
                            tzinfo=__import__("datetime").timezone.utc)) == 9
+
+
+def test_late_game_under_not_flagged():
+    # 0-1 w 72', Over 2.5 po 30 – pod koniec meczu niskie tempo jest normalne.
+    s = snap(market_name="Over/Under 2.5 Goals", line=2.5, first_half=False, minute=72,
+             home_goals=0, away_goals=1, over_price=30, under_price=1.12,
+             total_matched=86000, match_odds_matched=84000)
+    assert evaluate(s, Config()) is None

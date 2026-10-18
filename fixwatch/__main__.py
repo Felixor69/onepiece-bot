@@ -21,7 +21,7 @@ DEFAULT_EXCLUDED = [
     "English Premier League", "English Championship", "Spanish La Liga", "German Bundesliga",
     "Italian Serie A", "French Ligue 1", "Dutch Eredivisie", "Portuguese Primeira Liga",
     "UEFA Champions League", "UEFA Europa League", "UEFA Conference League",
-    "FIFA World Cup", "UEFA Euro", "Copa Libertadores", "Brazilian Serie A",
+    "FIFA World Cup", "UEFA Euro", "Copa Libertadores", "Brazilian Serie A", "Argentinian Primera Division",
 ]
 
 
@@ -36,7 +36,7 @@ def load_config():
         min_volume=env_float("MIN_VOLUME", 5000),
         rate_ratio_high=env_float("RATE_RATIO_HIGH", 1.7),
         rate_ratio_low=env_float("RATE_RATIO_LOW", 0.6),
-        volume_vs_match_odds=env_float("VOLUME_VS_MATCH_ODDS", 1.0),
+        volume_vs_match_odds=env_float("VOLUME_VS_MATCH_ODDS", 2.0),
         goals_per_90=env_float("GOALS_PER_90", 2.6),
         excluded_competitions=DEFAULT_EXCLUDED + extra,
     )

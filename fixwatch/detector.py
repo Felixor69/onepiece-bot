@@ -13,6 +13,12 @@ from dataclasses import dataclass, field
 from . import model
 
 
+# Poniżej tylu minut do końca okresu nie oceniamy kursu (model zbyt niedokładny).
+MIN_REMAINING = 15
+# Po tej minucie niskie tempo goli jest normalne (gra na wynik), więc Under nie alarmuje.
+UNDER_MAX_MINUTE = 60
+
+
 @dataclass
 class MarketSnapshot:
     market_id: str
@@ -36,7 +42,7 @@ class Config:
     min_volume: float = 5000.0          # minimalny obrót na rynku goli
     rate_ratio_high: float = 1.7        # rynek wycenia >= 1.7x normalne tempo goli
     rate_ratio_low: float = 0.6         # albo <= 0.6x (ustawione "under")
-    volume_vs_match_odds: float = 1.0   # rynek goli > 1X2
+    volume_vs_match_odds: float = 2.0   # rynek goli >= 2x obrotu 1X2
     goals_per_90: float = model.DEFAULT_GOALS_PER_90
     excluded_competitions: list[str] = field(default_factory=list)
 
@@ -106,7 +112,9 @@ def evaluate(s: MarketSnapshot, cfg: Config) -> Alert | None:
     if s.minute is not None and s.home_goals is not None:
         goals = s.home_goals + s.away_goals
         k = model.goals_needed(s.line, goals)
-        if k > 0:  # jeśli Over już wszedł, rynek nie ma znaczenia
+        remaining = model.remaining_minutes(s.minute, s.first_half)
+        # Jeśli Over już wszedł albo zostało mało czasu, model jest bez sensu.
+        if k > 0 and remaining >= MIN_REMAINING:
             alert.model_over_prob = model.model_over_prob(
                 s.line, goals, s.minute, s.first_half, cfg.goals_per_90)
             base = model.baseline_lambda(s.minute, s.first_half, cfg.goals_per_90)
@@ -118,7 +126,7 @@ def evaluate(s: MarketSnapshot, cfg: Config) -> Alert | None:
                     reasons.append(f"kurs na Over za niski: rynek {p_over:.0%} vs model "
                                    f"{alert.model_over_prob:.0%}")
                     score += alert.rate_ratio
-                elif alert.rate_ratio <= cfg.rate_ratio_low:
+                elif alert.rate_ratio <= cfg.rate_ratio_low and s.minute <= UNDER_MAX_MINUTE:
                     rate_hit = True
                     reasons.append(f"kurs na Under za niski: rynek Over {p_over:.0%} vs model "
                                    f"{alert.model_over_prob:.0%}")
@@ -128,7 +136,7 @@ def evaluate(s: MarketSnapshot, cfg: Config) -> Alert | None:
     if s.match_odds_matched is not None and s.match_odds_matched >= 0:
         if s.total_matched > cfg.volume_vs_match_odds * max(s.match_odds_matched, 1):
             ratio_hit = True
-            reasons.append("rynek goli ma większy obrót niż 1X2")
+            reasons.append("rynek goli ma dużo większy obrót niż 1X2")
             score += 1
 
     if volume_ok and (rate_hit or ratio_hit):
