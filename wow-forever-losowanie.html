@@ -197,6 +197,7 @@ textarea.copybox {
         </div>
         <div class="label" style="margin-top:6px">Zasady</div>
         <label class="opt"><input type="checkbox" id="optUnique" checked><span>Każdy inna klasa</span></label>
+        <label class="opt"><input type="checkbox" id="optWarTank"><span>Tank tylko Warrior<small>Bez Paladina i Druida w roli tanka</small></span></label>
         <label class="opt"><input type="checkbox" id="optCC" checked><span>Min. 2 klasy z kontrolą tłumu<small>Polymorph, Sap, Fear, Freezing Trap, Hibernate…</small></span></label>
         <label class="opt"><input type="checkbox" id="optRace" checked><span>Losuj też rasę i specjalizację</span></label>
         <label class="opt"><input type="checkbox" id="optSky"><span>Rasa Skyborne dozwolona<small>Wymaga płatnego Heroic Pack</small></span></label>
@@ -284,7 +285,7 @@ textarea.copybox {
       localStorage.setItem(STORE_KEY, JSON.stringify({
         faction: state.faction,
         players: state.players.map(p => ({ name: p.name, pref: p.pref })),
-        opts: ["optUnique", "optCC", "optRace", "optSky", "optFast"].reduce((o, id) => (o[id] = $(id).checked, o), {}),
+        opts: ["optUnique", "optWarTank", "optCC", "optRace", "optSky", "optFast"].reduce((o, id) => (o[id] = $(id).checked, o), {}),
       }));
     } catch (e) {}
   }
@@ -328,7 +329,12 @@ textarea.copybox {
   }
 
   function poolFor(role, used, faction) {
-    return CLASSES.filter(c => c.roles.includes(role) && !used.includes(c.id) && racesFor(faction, c.id).length);
+    return CLASSES.filter(c => canPlay(c, role) && !used.includes(c.id) && racesFor(faction, c.id).length);
+  }
+
+  function canPlay(c, role) {
+    if (role === "tank" && opt("optWarTank")) return c.id === "warrior";
+    return c.roles.includes(role);
   }
 
   function ccOk(ids) { return !opt("optCC") || ids.filter(id => BY_ID[id].cc).length >= 2; }
@@ -392,7 +398,7 @@ textarea.copybox {
     ctx.rotate(rot);
     CLASSES.forEach((c, k) => {
       const a0 = -Math.PI / 2 + k * SEG, a1 = a0 + SEG;
-      const dim = highlightRole && !c.roles.includes(highlightRole);
+      const dim = highlightRole && !canPlay(c, highlightRole);
       ctx.beginPath();
       ctx.moveTo(0, 0);
       ctx.arc(0, 0, R, a0, a1);
