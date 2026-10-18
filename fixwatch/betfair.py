@@ -125,6 +125,38 @@ class BetfairClient:
                     states[str(ev.get("eventId"))] = parsed
         return states
 
+    def fetch(self, market_types):
+        """Zwraca (rynki w formacie wspólnym, wynik/minuta per event)."""
+        catalogue = self.list_markets(market_types)
+        if not catalogue:
+            return [], {}
+        books = {b["marketId"]: b for b in self.list_books([m["marketId"] for m in catalogue])}
+        markets = []
+        for cat in catalogue:
+            book = books.get(cat["marketId"])
+            if not book:
+                continue
+            names = {r["selectionId"]: r.get("runnerName", "") for r in cat.get("runners", [])}
+            markets.append({
+                "market_id": cat["marketId"],
+                "market_type": cat.get("description", {}).get("marketType", ""),
+                "market_name": cat["marketName"],
+                "event_id": cat["event"]["id"],
+                "event_name": cat["event"]["name"],
+                "competition": cat.get("competition", {}).get("name", "?"),
+                "start_time": cat.get("marketStartTime", ""),
+                "inplay": book.get("inplay", False),
+                "status": book.get("status"),
+                "total_matched": book.get("totalMatched", 0.0),
+                "runners": [{
+                    "name": names.get(r["selectionId"], ""),
+                    "last": r.get("lastPriceTraded"),
+                    "back": [p["price"] for p in r.get("ex", {}).get("availableToBack", [])],
+                } for r in book.get("runners", [])],
+            })
+        in_play = {m["event_id"] for m in markets if m["inplay"]}
+        return markets, (self.event_states(in_play) if in_play else {})
+
 
 def parse_timeline(ev):
     try:
@@ -156,16 +188,12 @@ def parse_line(market_name):
     return float(m.group(1)) if m else None
 
 
-def over_under_prices(book, catalogue):
+def over_under(runners):
     """Zwraca (over_price, under_price) – ostatni kurs, a jak go brak to najlepszy back."""
-    names = {r["selectionId"]: r.get("runnerName", "") for r in catalogue.get("runners", [])}
     over = under = None
-    for runner in book.get("runners", []):
-        price = runner.get("lastPriceTraded")
-        if not price:
-            backs = runner.get("ex", {}).get("availableToBack", [])
-            price = backs[0]["price"] if backs else None
-        name = names.get(runner["selectionId"], "").lower()
+    for runner in runners:
+        price = runner.get("last") or (runner["back"][0] if runner.get("back") else None)
+        name = runner.get("name", "").lower()
         if name.startswith("over"):
             over = price
         elif name.startswith("under"):

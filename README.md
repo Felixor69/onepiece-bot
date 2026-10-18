@@ -3,9 +3,9 @@
 ## onepiece_checker.py
 Sprawdza dostępność produktów One Piece w hurt.rebel.pl i wysyła maila.
 
-## fixwatch – skaner podejrzanych rynków goli (Betfair Exchange)
-Co 30 s pobiera z Betfair rynki goli (First Half Goals 0.5/1.5/2.5, Over/Under 0.5–4.5)
-dla meczów trwających i startujących w ciągu godziny, i alarmuje, gdy:
+## fixwatch – skaner podejrzanych rynków goli (giełda Betfair)
+Co minutę pobiera z giełdy Betfair rynki goli (First Half Goals 0.5/1.5/2.5, Over/Under 0.5–4.5)
+dla trwających meczów i alarmuje, gdy:
 
 1. **Kurs nie pasuje do wyniku i minuty**: model Poissona liczy, ile goli powinno jeszcze
    paść, i porównuje z tempem, jakie wycenia rynek. Alarm przy >= 1.7x albo <= 0.6x normy.
@@ -23,6 +23,10 @@ python -m fixwatch --once # jeden skan
 python -m fixwatch        # 24/7
 ```
 
-Wymaga konta Betfair i App Key (https://developer.betfair.com). Wynik i minutę bot bierze
-z nieoficjalnego endpointu strony Betfair; jak nie odpowiada, liczy minutę z godziny startu
-i działa tylko na sygnałach obrotu.
+### Skąd dane
+- **BetsAPI (domyślnie, działa z Polski):** dane z giełdy Betfair bez konta na Betfair.
+  Potrzebny token z https://betsapi.com, pakiet „Betfair API” (100 USD/mies., jest
+  1-dniowy trial za 1 USD). W `.env`: `DATA_SOURCE=betsapi`, `BETSAPI_TOKEN=...`.
+  Skanuje mecze trwające, co 60 s (limit 3600 zapytań/h).
+- **Betfair bezpośrednio:** `DATA_SOURCE=betfair` + `BETFAIR_*`. Wymaga konta Betfair
+  i App Key, czyli nie z Polski.

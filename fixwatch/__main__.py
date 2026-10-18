@@ -1,9 +1,9 @@
-"""Skaner Betfair Exchange: szuka rynków goli, które "świrują" w egzotycznych ligach.
+"""Skaner giełdy Betfair (przez BetsAPI albo bezpośrednio): szuka rynków goli, które "świrują" w egzotycznych ligach.
 
 Uruchomienie:
     python -m fixwatch           # pętla 24/7
     python -m fixwatch --once    # jeden skan i koniec
-    python -m fixwatch --demo    # przykład ze screena (Panama), bez Betfair
+    python -m fixwatch --demo    # przykład ze screena (Panama), bez pobierania danych
 """
 import argparse
 import os
@@ -12,7 +12,7 @@ import time
 import requests
 from dotenv import load_dotenv
 
-from . import betfair
+from . import betfair, betsapi
 from .detector import Config, MarketSnapshot, evaluate
 from .notify import notify
 
@@ -42,60 +42,48 @@ def load_config():
     )
 
 
-def build_snapshots(client):
-    catalogue = client.list_markets(betfair.GOAL_MARKET_TYPES + ["MATCH_ODDS"])
-    if not catalogue:
-        return []
-    by_id = {m["marketId"]: m for m in catalogue}
-    books = {b["marketId"]: b for b in client.list_books(list(by_id))}
+GOAL_TYPES = set(betfair.GOAL_MARKET_TYPES)
 
-    match_odds = {}
-    goal_markets = []
-    for market_id, cat in by_id.items():
-        book = books.get(market_id)
-        if not book or book.get("status") != "OPEN":
-            continue
-        if cat.get("description", {}).get("marketType") == "MATCH_ODDS":
-            match_odds[cat["event"]["id"]] = book.get("totalMatched", 0.0)
-        else:
-            goal_markets.append((cat, book))
 
-    in_play_events = {cat["event"]["id"] for cat, book in goal_markets if book.get("inplay")}
-    states = client.event_states(in_play_events) if in_play_events else {}
+def build_snapshots(markets, states):
+    """Z rynków w formacie wspólnym (Betfair albo BetsAPI) robi dane dla detektora."""
+    markets = [m for m in markets if m["status"] == "OPEN"]
+    match_odds = {m["event_id"]: m["total_matched"] for m in markets
+                  if m["market_type"] == "MATCH_ODDS"}
 
     snapshots = []
-    for cat, book in goal_markets:
-        line = betfair.parse_line(cat["marketName"])
-        over, under = betfair.over_under_prices(book, cat)
+    for m in markets:
+        if m["market_type"] not in GOAL_TYPES:
+            continue
+        line = betfair.parse_line(m["market_name"])
+        over, under = betfair.over_under(m["runners"])
         if line is None or not over or not under:
             continue
-        event_id = cat["event"]["id"]
-        first_half = cat.get("description", {}).get("marketType", "").startswith("FIRST_HALF")
-        if book.get("inplay"):
-            state = states.get(event_id)
+        first_half = m["market_type"].startswith("FIRST_HALF")
+        if m["inplay"]:
+            state = states.get(m["event_id"])
             if state:
                 minute, home, away = state["minute"], state["home"], state["away"]
             else:
-                minute, home, away = betfair.estimate_minute(cat["marketStartTime"]), None, None
+                minute, home, away = betfair.estimate_minute(m["start_time"]), None, None
         else:
             minute, home, away = 0, 0, 0
         if first_half and minute is not None and minute >= 45:
             continue
         snapshots.append(MarketSnapshot(
-            market_id=cat["marketId"], market_name=cat["marketName"],
-            event_name=cat["event"]["name"],
-            competition=cat.get("competition", {}).get("name", "?"),
-            line=line, first_half=first_half, total_matched=book.get("totalMatched", 0.0),
+            market_id=m["market_id"], market_name=m["market_name"],
+            event_name=m["event_name"], competition=m["competition"],
+            line=line, first_half=first_half, total_matched=m["total_matched"],
             over_price=over, under_price=under, minute=minute,
             home_goals=home, away_goals=away,
-            match_odds_matched=match_odds.get(event_id),
-            url=betfair.MARKET_URL.format(cat["marketId"]),
+            match_odds_matched=match_odds.get(m["event_id"]),
+            url=betfair.MARKET_URL.format(m["market_id"]),
         ))
     return snapshots
 
 
-def scan(client, cfg, alerted):
-    snapshots = build_snapshots(client)
+def scan(fetch, cfg, alerted):
+    snapshots = build_snapshots(*fetch())
     alerts = [a for a in (evaluate(s, cfg) for s in snapshots) if a]
     alerts.sort(key=lambda a: a.score, reverse=True)
     for alert in alerts:
@@ -128,7 +116,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--once", action="store_true", help="jeden skan i koniec")
-    parser.add_argument("--demo", action="store_true", help="przykład ze screena, bez Betfair")
+    parser.add_argument("--demo", action="store_true", help="przykład ze screena, bez pobierania danych")
     args = parser.parse_args()
     load_dotenv()
 
@@ -137,21 +125,31 @@ def main():
         return
 
     cfg = load_config()
-    client = betfair.BetfairClient(
-        app_key=os.environ["BETFAIR_APP_KEY"],
-        username=os.environ["BETFAIR_USERNAME"],
-        password=os.environ["BETFAIR_PASSWORD"],
-        cert_file=os.getenv("BETFAIR_CERT_FILE"),
-        key_file=os.getenv("BETFAIR_KEY_FILE"),
-    )
-    interval = int(env_float("SCAN_INTERVAL", 30))
+    source = os.getenv("DATA_SOURCE", "betsapi")
+    if source == "betsapi":
+        client = betsapi.BetsApiClient(os.environ["BETSAPI_TOKEN"])
+        fetch = client.fetch
+        default_interval = 60  # limit BetsAPI: 3600 zapytań/h
+    else:
+        client = betfair.BetfairClient(
+            app_key=os.environ["BETFAIR_APP_KEY"],
+            username=os.environ["BETFAIR_USERNAME"],
+            password=os.environ["BETFAIR_PASSWORD"],
+            cert_file=os.getenv("BETFAIR_CERT_FILE"),
+            key_file=os.getenv("BETFAIR_KEY_FILE"),
+        )
+        client.login()
+
+        def fetch():
+            client.keep_alive()
+            return client.fetch(betfair.GOAL_MARKET_TYPES + ["MATCH_ODDS"])
+        default_interval = 30
+    interval = int(env_float("SCAN_INTERVAL", default_interval))
     alerted = {}
-    client.login()
-    print("[INFO] Startuję skaner rynków goli...")
+    print(f"[INFO] Startuję skaner rynków goli (źródło: {source})...")
     while True:
         try:
-            client.keep_alive()
-            scan(client, cfg, alerted)
+            scan(fetch, cfg, alerted)
         except (requests.RequestException, RuntimeError, KeyError) as e:
             print(f"[ERROR] {e}")
         if args.once:
