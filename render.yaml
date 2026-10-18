@@ -4,15 +4,3 @@ services:
     runtime: python
     buildCommand: "pip install -r requirements.txt"
     startCommand: "python3 onepiece_checker.py"
-  - type: worker
-    name: fixwatch
-    runtime: python
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "python3 -m fixwatch"
-    envVars:
-      - key: BETSAPI_TOKEN
-        sync: false
-      - key: TELEGRAM_BOT_TOKEN
-        sync: false
-      - key: TELEGRAM_CHAT_ID
-        sync: false

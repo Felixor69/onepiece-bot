@@ -5,6 +5,18 @@ from email.mime.text import MIMEText
 import requests
 
 
+def send_discord(text):
+    url = os.getenv("DISCORD_WEBHOOK_URL")
+    if not url:
+        return False
+    # Link w <> żeby Discord nie robił podglądu strony.
+    lines = [f"<{line}>" if line.startswith("https://") else line for line in text.split("\n")]
+    r = requests.post(url, json={"content": "\n".join(lines)[:2000]}, timeout=15)
+    if not r.ok:
+        print(f"[WARN] Discord: {r.status_code} {r.text[:200]}")
+    return r.ok
+
+
 def send_telegram(text):
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
@@ -37,10 +49,11 @@ def notify(alert):
     text = alert.format()
     print(text + "\n")
     sent = False
-    try:
-        sent |= send_telegram(text)
-    except requests.RequestException as e:
-        print(f"[WARN] Telegram nie wysłany: {e}")
+    for name, send in (("Discord", send_discord), ("Telegram", send_telegram)):
+        try:
+            sent |= send(text)
+        except requests.RequestException as e:
+            print(f"[WARN] {name} nie wysłany: {e}")
     if os.getenv("ALERT_EMAIL", "0") == "1":
         try:
             sent |= send_email(f"Podejrzany rynek: {alert.snapshot.event_name}", text)

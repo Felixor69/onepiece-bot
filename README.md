@@ -15,9 +15,17 @@ dla trwających meczów i alarmuje, gdy:
 Alert = (2) oraz (1) lub (3). Przykład ze screena (Panama, 0-0 w 9', Over 1.5 FH po 1.70):
 rynek 59%, model 26% (fair ~3.85), obrót 31k.
 
+Na serwer (Contabo) jako usługa 24/7, alerty na Discord:
+```
+curl -fsSL https://raw.githubusercontent.com/Felixor69/onepiece-bot/claude/busy-ptolemy-anm020/deploy/install.sh \
+  | sudo BETSAPI_TOKEN=... DISCORD_WEBHOOK_URL=... bash
+journalctl -u fixwatch -f   # logi
+```
+
+Lokalnie:
 ```
 pip install -r requirements.txt
-cp .env.example .env      # uzupełnij BETFAIR_* i TELEGRAM_*
+cp .env.example .env      # uzupełnij BETSAPI_TOKEN i DISCORD_WEBHOOK_URL
 python -m fixwatch --demo # przykład ze screena, bez logowania
 python -m fixwatch --once # jeden skan
 python -m fixwatch        # 24/7

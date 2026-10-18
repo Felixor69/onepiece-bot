@@ -82,3 +82,20 @@ def test_late_game_under_not_flagged():
              home_goals=0, away_goals=1, over_price=30, under_price=1.12,
              total_matched=86000, match_odds_matched=84000)
     assert evaluate(s, Config()) is None
+
+
+def test_discord_message(monkeypatch):
+    from fixwatch import notify
+    sent = {}
+
+    class Resp:
+        ok = True
+
+    def fake_post(url, json, timeout):
+        sent["url"], sent["body"] = url, json
+        return Resp()
+
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.test/hook")
+    monkeypatch.setattr(notify.requests, "post", fake_post)
+    assert notify.send_discord("🚨 A v B\nhttps://www.betfair.com/x")
+    assert sent["body"]["content"] == "🚨 A v B\n<https://www.betfair.com/x>"
