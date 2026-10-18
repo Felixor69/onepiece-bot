@@ -1,0 +1,613 @@
+<title>Koło Klas Forever</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Alegreya+Sans:wght@400;500;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: koło po lewej jak stół do losowania, drużyna 5 kart po prawej; na telefonie jedno pod drugim.
+   Jednolity ciemny wygląd z wyboru: kolory klas WoW muszą być czytelne, a Priest jest biały. */
+:root {
+  --bg: #12141b;
+  --panel: #1a1d27;
+  --line: #2b3040;
+  --fg: #e7e4dc;
+  --muted: #9a9cab;
+  --gold: #d8b25a;
+  --danger: #e2735f;
+  --ok: #8fc77a;
+  --f-display: "Cinzel", "Trajan Pro", Georgia, serif;
+  --f-body: "Alegreya Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: radial-gradient(1200px 600px at 20% -10%, #1d2233 0%, transparent 60%), var(--bg);
+  color: var(--fg);
+  font-family: var(--f-body);
+  font-size: 16px;
+  line-height: 1.45;
+  min-height: 100%;
+}
+.wrap {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding-block: 28px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid;
+  gap: 24px;
+}
+header h1 {
+  font-family: var(--f-display);
+  font-weight: 800;
+  font-size: clamp(1.7rem, 4vw, 2.6rem);
+  letter-spacing: .04em;
+  margin: 0;
+  text-wrap: balance;
+  color: var(--gold);
+}
+header p { margin: 6px 0 0; color: var(--muted); max-width: 62ch; }
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 420px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 18px;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.label {
+  font-size: .75rem;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  color: var(--muted);
+  font-weight: 700;
+}
+.wheel-box { position: relative; width: 100%; max-width: 380px; aspect-ratio: 1; margin: 0 auto; }
+.wheel-box canvas { width: 100%; height: 100%; display: block; }
+.pointer {
+  position: absolute; left: 50%; top: -6px; transform: translateX(-50%);
+  width: 0; height: 0;
+  border-left: 13px solid transparent; border-right: 13px solid transparent;
+  border-top: 24px solid var(--gold);
+  filter: drop-shadow(0 2px 2px rgba(0,0,0,.6));
+}
+.now {
+  text-align: center; min-height: 1.6em;
+  font-family: var(--f-display); font-weight: 600; letter-spacing: .03em;
+}
+.btns { display: flex; flex-wrap: wrap; gap: 10px; }
+button {
+  font: inherit; cursor: pointer; border-radius: 8px;
+  border: 1px solid var(--line); background: #232838; color: var(--fg);
+  padding: 9px 14px;
+}
+button:hover:not(:disabled) { border-color: var(--gold); }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+button:disabled { opacity: .5; cursor: default; }
+button.primary {
+  background: linear-gradient(#e2c06b, #b98f37); color: #1a1408; border-color: #e7c873;
+  font-weight: 700; font-size: 1.05rem; padding: 11px 20px; flex: 1 1 auto;
+}
+.opts { display: grid; gap: 10px; }
+.opt { display: flex; gap: 10px; align-items: center; }
+.opt input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--gold); flex: none; }
+.opt small { color: var(--muted); display: block; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; background: transparent; padding: 7px 12px; }
+.seg button[aria-pressed=true] { background: #2f3548; color: var(--gold); font-weight: 700; }
+.err { color: var(--danger); margin: 0; }
+.err:empty { display: none; }
+
+.party { display: grid; gap: 10px; }
+.member {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #161922;
+  border-left: 4px solid var(--cls, var(--line));
+  transition: background .3s;
+}
+.member.active { background: #222738; }
+.role-ic {
+  width: 34px; height: 34px; border-radius: 50%;
+  display: grid; place-items: center; font-weight: 800; font-size: .8rem;
+  font-family: var(--f-mono); background: #2a2f3f; color: var(--muted);
+}
+.role-ic.tank { background: #2b3a5a; color: #9fc0ff; }
+.role-ic.healer { background: #2a4a33; color: #9fe0a6; }
+.role-ic.dps { background: #4d2a2a; color: #ffaaa0; }
+.m-main { display: grid; gap: 6px; min-width: 0; }
+.m-top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.m-top input {
+  font: inherit; font-weight: 700; color: var(--fg);
+  background: transparent; border: 1px solid transparent; border-radius: 6px;
+  padding: 2px 6px; margin-left: -6px; width: 11ch; min-width: 0;
+}
+.m-top input:hover, .m-top input:focus { border-color: var(--line); background: #10121a; }
+.m-top select {
+  font: inherit; font-size: .85rem; color: var(--muted);
+  background: #10121a; border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px;
+}
+.m-result { min-height: 1.5em; }
+.cls-name { font-family: var(--f-display); font-weight: 800; font-size: 1.15rem; color: var(--cls); letter-spacing: .02em; }
+.m-sub { color: var(--muted); font-size: .92rem; }
+.new-badge {
+  font-size: .68rem; text-transform: uppercase; letter-spacing: .1em; font-weight: 700;
+  color: var(--gold); border: 1px solid var(--gold); border-radius: 4px; padding: 0 4px; margin-left: 4px;
+  vertical-align: 2px;
+}
+.placeholder { color: #5f6273; font-style: italic; }
+.reroll { padding: 6px 10px; font-size: .85rem; }
+
+.summary { display: grid; gap: 10px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  font-size: .85rem; padding: 3px 9px; border-radius: 999px;
+  border: 1px solid var(--line); color: #5f6273;
+}
+.chip.on { color: var(--fg); border-color: #4a5370; background: #232838; }
+.chip.on::before { content: "✓ "; color: var(--ok); }
+.copy-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.copy-row span { color: var(--ok); font-size: .9rem; }
+textarea.copybox {
+  width: 100%; min-height: 120px; font-family: var(--f-mono); font-size: .8rem;
+  background: #10121a; color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 8px;
+}
+.note { color: var(--muted); font-size: .85rem; margin: 0; }
+@media (prefers-reduced-motion: reduce) { .member { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Koło Klas Forever</h1>
+    <p>Losuje klasy dla 5-osobowej drużyny w WoW: Forever tak, żeby skład działał w dungeonach: 1 tank, 1 healer i 3 DPS, bez powtórek i z kontrolą tłumu.</p>
+  </header>
+
+  <div class="grid">
+    <section class="panel" aria-label="Koło losowania">
+      <div class="wheel-box">
+        <canvas id="wheel" width="760" height="760" aria-hidden="true"></canvas>
+        <div class="pointer"></div>
+      </div>
+      <div class="now" id="now" aria-live="polite">Gotowi do losowania</div>
+      <div class="btns">
+        <button class="primary" id="rollAll">Losuj drużynę</button>
+      </div>
+      <p class="err" id="err" role="alert"></p>
+
+      <div class="opts">
+        <div class="label">Frakcja</div>
+        <div class="seg" id="factionSeg" role="group" aria-label="Frakcja">
+          <button data-v="random" aria-pressed="true">Losowo</button>
+          <button data-v="alliance" aria-pressed="false">Przymierze</button>
+          <button data-v="horde" aria-pressed="false">Horda</button>
+        </div>
+        <div class="label" style="margin-top:6px">Zasady</div>
+        <label class="opt"><input type="checkbox" id="optUnique" checked><span>Każdy inna klasa</span></label>
+        <label class="opt"><input type="checkbox" id="optCC" checked><span>Min. 2 klasy z kontrolą tłumu<small>Polymorph, Sap, Fear, Freezing Trap, Hibernate…</small></span></label>
+        <label class="opt"><input type="checkbox" id="optRace" checked><span>Losuj też rasę i specjalizację</span></label>
+        <label class="opt"><input type="checkbox" id="optSky"><span>Rasa Skyborne dozwolona<small>Wymaga płatnego Heroic Pack</small></span></label>
+        <label class="opt"><input type="checkbox" id="optFast"><span>Szybkie losowanie bez kręcenia</span></label>
+      </div>
+    </section>
+
+    <section class="panel" aria-label="Drużyna">
+      <div class="label">Drużyna · możesz wpisać imiona i wybrać rolę, jeśli ktoś ma preferencję</div>
+      <div class="party" id="party"></div>
+
+      <div class="summary">
+        <div class="label">Co daje ten skład</div>
+        <div class="chips" id="buffs"></div>
+        <div class="copy-row">
+          <button id="copyBtn" disabled>Kopiuj na Discorda</button>
+          <span id="copyMsg" aria-live="polite"></span>
+        </div>
+        <textarea class="copybox" id="copyBox" readonly hidden aria-label="Tekst do skopiowania"></textarea>
+        <p class="note">Rasy i nowe połączenia (np. Undead Paladin, Dwarf Shaman) według zapowiedzi Blizzarda dla WoW: Forever, premiera 4 listopada 2026. Role tanka i healera przyjęte jak w Classic; po premierze mogą się różnić.</p>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+(() => {
+  const CLASSES = [
+    { id: "warrior", name: "Warrior", color: "#C69B6D", roles: ["tank", "dps"],
+      specs: { tank: ["Protection"], dps: ["Arms", "Fury"] }, cc: false, buff: "Battle Shout" },
+    { id: "paladin", name: "Paladin", color: "#F48CBA", roles: ["tank", "healer", "dps"],
+      specs: { tank: ["Protection"], healer: ["Holy"], dps: ["Retribution"] }, cc: false, buff: "Aury i Blessingi" },
+    { id: "hunter", name: "Hunter", color: "#AAD372", roles: ["dps"],
+      specs: { dps: ["Beast Mastery", "Marksmanship", "Survival"] }, cc: true, buff: "Trueshot Aura" },
+    { id: "rogue", name: "Rogue", color: "#FFF468", roles: ["dps"],
+      specs: { dps: ["Assassination", "Combat", "Subtlety"] }, cc: true, buff: "Otwieranie skrzyń i drzwi" },
+    { id: "priest", name: "Priest", color: "#FFFFFF", roles: ["healer", "dps"],
+      specs: { healer: ["Holy", "Discipline"], dps: ["Shadow"] }, cc: true, buff: "Power Word: Fortitude" },
+    { id: "shaman", name: "Shaman", color: "#0070DD", roles: ["healer", "dps"],
+      specs: { healer: ["Restoration"], dps: ["Elemental", "Enhancement"] }, cc: false, buff: "Totemy" },
+    { id: "mage", name: "Mage", color: "#3FC7EB", roles: ["dps"],
+      specs: { dps: ["Arcane", "Fire", "Frost"] }, cc: true, buff: "Arcane Intellect" },
+    { id: "warlock", name: "Warlock", color: "#8788EE", roles: ["dps"],
+      specs: { dps: ["Affliction", "Demonology", "Destruction"] }, cc: true, buff: "Healthstone i przywoływanie" },
+    { id: "druid", name: "Druid", color: "#FF7C0A", roles: ["tank", "healer", "dps"],
+      specs: { tank: ["Feral (niedźwiedź)"], healer: ["Restoration"], dps: ["Balance", "Feral (kot)"] }, cc: true, buff: "Mark of the Wild" },
+  ];
+  const BY_ID = Object.fromEntries(CLASSES.map(c => [c.id, c]));
+
+  // "fresh" = nowe połączenie rasy i klasy w WoW: Forever
+  const RACES = {
+    alliance: [
+      { name: "Human", classes: ["warrior", "paladin", "rogue", "priest", "mage", "warlock", "hunter"], fresh: ["hunter"] },
+      { name: "Dwarf", classes: ["warrior", "paladin", "hunter", "rogue", "priest", "shaman"], fresh: ["shaman"] },
+      { name: "Night Elf", classes: ["warrior", "hunter", "rogue", "priest", "druid"], fresh: [] },
+      { name: "Gnome", classes: ["warrior", "rogue", "mage", "warlock", "priest"], fresh: ["priest"] },
+      { name: "Skyborne (High Order)", classes: ["warrior", "hunter", "rogue", "druid", "mage"], fresh: [], sky: true },
+    ],
+    horde: [
+      { name: "Orc", classes: ["warrior", "hunter", "rogue", "shaman", "warlock", "mage"], fresh: ["mage"] },
+      { name: "Undead", classes: ["warrior", "rogue", "priest", "mage", "warlock", "paladin"], fresh: ["paladin"] },
+      { name: "Tauren", classes: ["warrior", "hunter", "shaman", "druid"], fresh: [] },
+      { name: "Troll", classes: ["warrior", "hunter", "rogue", "priest", "shaman", "mage", "warlock"], fresh: ["warlock"] },
+      { name: "Skyborne (Windshaper)", classes: ["warrior", "hunter", "rogue", "druid", "shaman"], fresh: [], sky: true },
+    ],
+  };
+  const FACTION_NAME = { alliance: "Przymierze", horde: "Horda" };
+  const ROLE_NAME = { tank: "Tank", healer: "Healer", dps: "DPS", any: "Dowolna rola" };
+  const ROLE_ICON = { tank: "T", healer: "H", dps: "D" };
+  const ROLE_EMOJI = { tank: "🛡️", healer: "💚", dps: "⚔️" };
+
+  const DEFAULT_NAMES = ["Ja", "Weronika", "Gracz 3", "Gracz 4", "Gracz 5"];
+  const STORE_KEY = "kolo-klas-forever-v1";
+
+  const state = {
+    faction: "random",
+    players: DEFAULT_NAMES.map(n => ({ name: n, pref: "any", result: null })),
+    rolledFaction: null,
+    spinning: false,
+  };
+
+  // --- pamięć ustawień w tej przeglądarce (opcjonalnie) ---
+  function save() {
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify({
+        faction: state.faction,
+        players: state.players.map(p => ({ name: p.name, pref: p.pref })),
+        opts: ["optUnique", "optCC", "optRace", "optSky", "optFast"].reduce((o, id) => (o[id] = $(id).checked, o), {}),
+      }));
+    } catch (e) {}
+  }
+  function load() {
+    try {
+      const d = JSON.parse(localStorage.getItem(STORE_KEY) || "null");
+      if (!d) return;
+      if (d.faction) state.faction = d.faction;
+      (d.players || []).slice(0, 5).forEach((p, i) => {
+        state.players[i].name = p.name || DEFAULT_NAMES[i];
+        state.players[i].pref = p.pref || "any";
+      });
+      Object.entries(d.opts || {}).forEach(([id, v]) => { if ($(id)) $(id).checked = !!v; });
+    } catch (e) {}
+  }
+
+  const $ = id => document.getElementById(id);
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  const shuffle = arr => { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const opt = id => $(id).checked;
+
+  // --- logika losowania ---
+  function assignRoles() {
+    const slots = ["tank", "healer", "dps", "dps", "dps"];
+    const roles = new Array(5).fill(null);
+    state.players.forEach((p, i) => {
+      if (p.pref === "any") return;
+      const k = slots.indexOf(p.pref);
+      if (k === -1) throw new Error(p.pref === "dps"
+        ? "Więcej niż 3 osoby chcą grać DPS. W drużynie są 3 miejsca na DPS, zmień komuś rolę na „Dowolna”."
+        : `Więcej niż jedna osoba chce grać jako ${ROLE_NAME[p.pref]}. W drużynie jest 1 tank i 1 healer.`);
+      slots.splice(k, 1);
+      roles[i] = p.pref;
+    });
+    const rest = shuffle(slots);
+    return roles.map(r => r || rest.pop());
+  }
+
+  function racesFor(faction, clsId) {
+    return RACES[faction].filter(r => r.classes.includes(clsId) && (opt("optSky") || !r.sky));
+  }
+
+  function poolFor(role, used, faction) {
+    return CLASSES.filter(c => c.roles.includes(role) && !used.includes(c.id) && racesFor(faction, c.id).length);
+  }
+
+  function ccOk(ids) { return !opt("optCC") || ids.filter(id => BY_ID[id].cc).length >= 2; }
+
+  function decorate(role, clsId, faction) {
+    const c = BY_ID[clsId];
+    const race = pick(racesFor(faction, clsId));
+    return { role, cls: clsId, spec: pick(c.specs[role]), race: race.name, fresh: race.fresh.includes(clsId) };
+  }
+
+  function rollParty() {
+    const faction = state.faction === "random" ? pick(["alliance", "horde"]) : state.faction;
+    const roles = assignRoles();
+    // rola tank/healer najpierw, bo ma najmniejszą pulę klas
+    const order = [0, 1, 2, 3, 4].sort((a, b) => (roles[a] === "dps") - (roles[b] === "dps"));
+    for (let tries = 0; tries < 1000; tries++) {
+      const picked = new Array(5);
+      let ok = true;
+      for (const i of order) {
+        const used = opt("optUnique") ? picked.filter(Boolean) : [];
+        const pool = poolFor(roles[i], used, faction);
+        if (!pool.length) { ok = false; break; }
+        picked[i] = pick(pool).id;
+      }
+      if (ok && ccOk(picked)) {
+        return { faction, results: picked.map((id, i) => decorate(roles[i], id, faction)) };
+      }
+    }
+    throw new Error("Nie da się ułożyć składu przy tych zasadach. Wyłącz którąś z opcji i spróbuj ponownie.");
+  }
+
+  function rerollOne(i) {
+    const cur = state.players[i].result;
+    const faction = state.rolledFaction;
+    const others = state.players.filter((_, j) => j !== i).map(p => p.result.cls);
+    const used = opt("optUnique") ? others : [];
+    let pool = poolFor(cur.role, used, faction).filter(c => ccOk([...others, c.id]));
+    const fresh = pool.filter(c => c.id !== cur.cls);
+    if (!fresh.length) throw new Error(`Dla roli ${ROLE_NAME[cur.role]} nie ma innej wolnej klasy przy tych zasadach.`);
+    return decorate(cur.role, pick(fresh).id, faction);
+  }
+
+  // --- koło ---
+  const canvas = $("wheel");
+  const ctx = canvas.getContext("2d");
+  const SEG = (Math.PI * 2) / CLASSES.length;
+  let rot = 0;
+  let highlightRole = null;
+
+  function textColor(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    const r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+    return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? "#14161d" : "#ffffff";
+  }
+
+  function drawWheel() {
+    const S = canvas.width, R = S / 2 - 10, C = S / 2;
+    ctx.clearRect(0, 0, S, S);
+    ctx.save();
+    ctx.translate(C, C);
+    ctx.rotate(rot);
+    CLASSES.forEach((c, k) => {
+      const a0 = -Math.PI / 2 + k * SEG, a1 = a0 + SEG;
+      const dim = highlightRole && !c.roles.includes(highlightRole);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, R, a0, a1);
+      ctx.closePath();
+      ctx.fillStyle = c.color;
+      ctx.globalAlpha = dim ? 0.18 : 1;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = "#12141b";
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      ctx.save();
+      ctx.rotate(a0 + SEG / 2);
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      ctx.font = "700 34px Cinzel, Georgia, serif";
+      ctx.fillStyle = dim ? "rgba(255,255,255,.35)" : textColor(c.color);
+      ctx.fillText(c.name, R - 26, 0);
+      ctx.restore();
+    });
+    ctx.restore();
+    ctx.beginPath();
+    ctx.arc(C, C, 58, 0, Math.PI * 2);
+    ctx.fillStyle = "#1a1d27";
+    ctx.fill();
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = "#d8b25a";
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(C, C, R + 4, 0, Math.PI * 2);
+    ctx.lineWidth = 8;
+    ctx.stroke();
+  }
+
+  const reduced = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function spinTo(clsId, role) {
+    highlightRole = role;
+    const k = CLASSES.findIndex(c => c.id === clsId);
+    const jitter = (Math.random() - 0.5) * SEG * 0.7;
+    const want = -(k + 0.5) * SEG + jitter;
+    const TAU = Math.PI * 2;
+    let delta = ((want - rot) % TAU + TAU) % TAU;
+    if (opt("optFast") || reduced) {
+      rot += delta; drawWheel();
+      return new Promise(r => setTimeout(r, 120));
+    }
+    const from = rot, to = rot + delta + TAU * (3 + Math.floor(Math.random() * 2));
+    const dur = 2200 + Math.random() * 500;
+    const t0 = performance.now();
+    return new Promise(resolve => {
+      function frame(t) {
+        const p = Math.min(1, (t - t0) / dur);
+        const e = 1 - Math.pow(1 - p, 4);
+        rot = from + (to - from) * e;
+        drawWheel();
+        if (p < 1) requestAnimationFrame(frame); else setTimeout(resolve, 350);
+      }
+      requestAnimationFrame(frame);
+    });
+  }
+
+  // --- widok ---
+  function renderParty(activeIdx = -1) {
+    const box = $("party");
+    box.innerHTML = "";
+    state.players.forEach((p, i) => {
+      const r = p.result;
+      const c = r && BY_ID[r.cls];
+      const el = document.createElement("div");
+      el.className = "member" + (i === activeIdx ? " active" : "");
+      if (c) el.style.setProperty("--cls", c.color);
+      el.innerHTML = `
+        <div class="role-ic ${r ? r.role : ""}" title="${r ? ROLE_NAME[r.role] : "Rola nie wylosowana"}">${r ? ROLE_ICON[r.role] : "?"}</div>
+        <div class="m-main">
+          <div class="m-top">
+            <input id="name${i}" value="" aria-label="Imię gracza ${i + 1}" maxlength="20">
+            <select id="pref${i}" aria-label="Preferowana rola gracza ${i + 1}">
+              ${["any", "tank", "healer", "dps"].map(v => `<option value="${v}" ${p.pref === v ? "selected" : ""}>${ROLE_NAME[v]}</option>`).join("")}
+            </select>
+          </div>
+          <div class="m-result">${r
+            ? `<span class="cls-name">${c.name}</span>${r.fresh && opt("optRace") ? '<span class="new-badge">nowe</span>' : ""}
+               <div class="m-sub">${ROLE_NAME[r.role]}${opt("optRace") ? ` · ${r.spec} · ${r.race}` : ""}</div>`
+            : `<span class="placeholder">jeszcze nie wylosowano</span>`}</div>
+        </div>
+        <button class="reroll" data-i="${i}" ${r && !state.spinning ? "" : "disabled"} title="Przelosuj klasę, rola zostaje">Przelosuj</button>`;
+      el.querySelector("input").value = p.name;
+      box.appendChild(el);
+    });
+  }
+
+  function renderSummary() {
+    const done = state.players.every(p => p.result);
+    const ids = done ? state.players.map(p => p.result.cls) : [];
+    $("buffs").innerHTML = CLASSES.map(c =>
+      `<span class="chip ${ids.includes(c.id) ? "on" : ""}" title="${c.name}">${c.buff}</span>`).join("") +
+      (done ? `<span class="chip on">Kontrola tłumu: ${ids.filter(id => BY_ID[id].cc).length} klasy</span>` : "") +
+      (done && ids.includes("druid") ? `<span class="chip on">Wskrzeszanie w walce (Rebirth)</span>` : "");
+    $("copyBtn").disabled = !done || state.spinning;
+  }
+
+  function copyText() {
+    const showRace = opt("optRace");
+    const lines = [`**Skład WoW: Forever · ${FACTION_NAME[state.rolledFaction]}**`];
+    state.players.forEach(p => {
+      const r = p.result, c = BY_ID[r.cls];
+      lines.push(`${ROLE_EMOJI[r.role]} ${p.name}: **${c.name}**${showRace ? ` (${r.spec}), ${r.race}` : ""}`);
+    });
+    return lines.join("\n");
+  }
+
+  function setBusy(b) {
+    state.spinning = b;
+    $("rollAll").disabled = b;
+    document.querySelectorAll(".reroll").forEach(btn => btn.disabled = b || !state.players[btn.dataset.i].result);
+    renderSummary();
+  }
+
+  async function doRollAll() {
+    $("err").textContent = "";
+    let res;
+    try { res = rollParty(); } catch (e) { $("err").textContent = e.message; return; }
+    state.rolledFaction = res.faction;
+    state.players.forEach(p => p.result = null);
+    setBusy(true);
+    renderParty();
+    $("now").textContent = `Frakcja: ${FACTION_NAME[res.faction]}`;
+    // losujemy w kolejności: tank, healer, potem DPS
+    const order = [0, 1, 2, 3, 4].sort((a, b) => ["tank", "healer", "dps"].indexOf(res.results[a].role) - ["tank", "healer", "dps"].indexOf(res.results[b].role));
+    for (const i of order) {
+      const r = res.results[i];
+      renderParty(i);
+      $("now").textContent = `${state.players[i].name} · ${ROLE_NAME[r.role]}…`;
+      await spinTo(r.cls, r.role);
+      state.players[i].result = r;
+      renderParty(i);
+      $("now").textContent = `${state.players[i].name}: ${BY_ID[r.cls].name}`;
+    }
+    highlightRole = null;
+    drawWheel();
+    renderParty();
+    $("now").textContent = `Drużyna gotowa · ${FACTION_NAME[res.faction]}`;
+    setBusy(false);
+  }
+
+  async function doReroll(i) {
+    $("err").textContent = "";
+    let r;
+    try { r = rerollOne(i); } catch (e) { $("err").textContent = e.message; return; }
+    setBusy(true);
+    renderParty(i);
+    $("now").textContent = `${state.players[i].name} · ${ROLE_NAME[r.role]}…`;
+    await spinTo(r.cls, r.role);
+    state.players[i].result = r;
+    highlightRole = null;
+    drawWheel();
+    renderParty();
+    $("now").textContent = `${state.players[i].name}: ${BY_ID[r.cls].name}`;
+    setBusy(false);
+  }
+
+  // --- zdarzenia ---
+  $("rollAll").addEventListener("click", doRollAll);
+  $("party").addEventListener("click", e => {
+    const b = e.target.closest(".reroll");
+    if (b && !state.spinning) doReroll(+b.dataset.i);
+  });
+  $("party").addEventListener("input", e => {
+    const m = e.target.id.match(/^name(\d)$/);
+    if (m) { state.players[+m[1]].name = e.target.value.trim() || `Gracz ${+m[1] + 1}`; save(); }
+  });
+  $("party").addEventListener("change", e => {
+    const m = e.target.id.match(/^pref(\d)$/);
+    if (m) { state.players[+m[1]].pref = e.target.value; $("err").textContent = ""; save(); }
+  });
+  $("factionSeg").addEventListener("click", e => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    state.faction = b.dataset.v;
+    document.querySelectorAll("#factionSeg button").forEach(x => x.setAttribute("aria-pressed", x === b));
+    save();
+  });
+  document.querySelectorAll(".opts input").forEach(i => i.addEventListener("change", () => {
+    save();
+    if (i.id === "optRace") renderParty();
+  }));
+  $("copyBtn").addEventListener("click", () => {
+    const text = copyText();
+    const box = $("copyBox");
+    box.value = text;
+    const fallback = () => {
+      box.hidden = false; box.focus(); box.select();
+      $("copyMsg").textContent = "Zaznaczone, skopiuj Ctrl+C";
+    };
+    try {
+      navigator.clipboard.writeText(text)
+        .then(() => { box.hidden = true; $("copyMsg").textContent = "Skopiowano"; setTimeout(() => $("copyMsg").textContent = "", 2500); })
+        .catch(fallback);
+    } catch (e) { fallback(); }
+  });
+
+  // --- start ---
+  load();
+  document.querySelectorAll("#factionSeg button").forEach(x => x.setAttribute("aria-pressed", x.dataset.v === state.faction));
+  // przykładowy skład na start, żeby było widać, jak wygląda wynik
+  try {
+    const res = rollParty();
+    state.rolledFaction = res.faction;
+    res.results.forEach((r, i) => state.players[i].result = r);
+    $("now").textContent = "Przykładowy skład. Kliknij „Losuj drużynę”";
+  } catch (e) {}
+  drawWheel();
+  renderParty();
+  renderSummary();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(drawWheel);
+})();
+</script>
