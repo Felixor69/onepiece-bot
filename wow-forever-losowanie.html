@@ -74,16 +74,32 @@ header p { margin: 6px 0 0; color: var(--muted); max-width: 62ch; }
 .wheel-box { position: relative; width: 100%; max-width: 380px; aspect-ratio: 1; margin: 0 auto; }
 .wheel-box canvas { width: 100%; height: 100%; display: block; }
 .pointer {
-  position: absolute; left: 50%; top: -6px; transform: translateX(-50%);
+  position: absolute; left: 50%; top: -6px; margin-left: -13px;
   width: 0; height: 0;
   border-left: 13px solid transparent; border-right: 13px solid transparent;
   border-top: 24px solid var(--gold);
   filter: drop-shadow(0 2px 2px rgba(0,0,0,.6));
+  transform-origin: 50% 0;
 }
+.banner {
+  position: absolute; inset: 0; display: grid; place-content: center; text-align: center;
+  pointer-events: none; opacity: 0; transform: scale(.6);
+  transition: opacity .25s, transform .45s cubic-bezier(.2, 1.6, .4, 1);
+}
+.banner.show { opacity: 1; transform: scale(1); }
+.banner .b-inner {
+  background: rgba(14, 16, 22, .9); border: 2px solid var(--cls, var(--gold));
+  border-radius: 12px; padding: 12px 22px;
+  box-shadow: 0 0 40px var(--cls, var(--gold));
+}
+.banner .b-name { color: var(--muted); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-size: .85rem; }
+.banner .b-cls { font-family: var(--f-display); font-weight: 800; font-size: 2.2rem; color: var(--cls, var(--gold)); line-height: 1.1; }
 .now {
   text-align: center; min-height: 1.6em;
-  font-family: var(--f-display); font-weight: 600; letter-spacing: .03em;
+  font-family: var(--f-display); font-weight: 600; letter-spacing: .03em; font-size: 1.05rem;
 }
+.now.flash { animation: flash .9s ease-out; }
+@keyframes flash { 0% { color: var(--gold); transform: scale(1.25); } 100% { color: var(--fg); transform: scale(1); } }
 .btns { display: flex; flex-wrap: wrap; gap: 10px; }
 button {
   font: inherit; cursor: pointer; border-radius: 8px;
@@ -95,8 +111,10 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 button:disabled { opacity: .5; cursor: default; }
 button.primary {
   background: linear-gradient(#e2c06b, #b98f37); color: #1a1408; border-color: #e7c873;
-  font-weight: 700; font-size: 1.05rem; padding: 11px 20px; flex: 1 1 auto;
+  font-weight: 700; font-size: 1.1rem; padding: 12px 20px; flex: 1 1 auto;
 }
+button.primary:not(:disabled) { animation: glow 2.2s ease-in-out infinite; }
+@keyframes glow { 50% { box-shadow: 0 0 22px rgba(216, 178, 90, .55); } }
 .opts { display: grid; gap: 10px; }
 .opt { display: flex; gap: 10px; align-items: center; }
 .opt input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--gold); flex: none; }
@@ -120,7 +138,9 @@ button.primary {
   border-left: 4px solid var(--cls, var(--line));
   transition: background .3s;
 }
-.member.active { background: #222738; }
+.member.active { background: #222738; border-color: var(--gold); border-left-color: var(--cls, var(--gold)); }
+.member.pop { animation: pop .6s cubic-bezier(.2, 1.6, .4, 1); }
+@keyframes pop { 0% { transform: scale(.94); box-shadow: 0 0 0 var(--cls); } 40% { transform: scale(1.03); box-shadow: 0 0 28px var(--cls); } 100% { transform: scale(1); box-shadow: 0 0 0 transparent; } }
 .role-ic {
   width: 34px; height: 34px; border-radius: 50%;
   display: grid; place-items: center; font-weight: 800; font-size: .8rem;
@@ -150,7 +170,9 @@ button.primary {
   vertical-align: 2px;
 }
 .placeholder { color: #5f6273; font-style: italic; }
-.reroll { padding: 6px 10px; font-size: .85rem; }
+.mystery { font-family: var(--f-display); font-weight: 800; color: #4a4f63; letter-spacing: .3em; }
+.small-btn { padding: 6px 10px; font-size: .85rem; }
+.small-btn.go { border-color: #6b5a2e; color: var(--gold); }
 
 .summary { display: grid; gap: 10px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -167,24 +189,30 @@ textarea.copybox {
   background: #10121a; color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 8px;
 }
 .note { color: var(--muted); font-size: .85rem; margin: 0; }
-@media (prefers-reduced-motion: reduce) { .member { transition: none; } }
+#fx { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; }
+@media (prefers-reduced-motion: reduce) {
+  .member, .banner { transition: none; }
+  .member.pop, .now.flash, button.primary:not(:disabled) { animation: none; }
+}
 </style>
 
+<canvas id="fx" aria-hidden="true"></canvas>
 <div class="wrap">
   <header>
     <h1>Koło Klas Forever</h1>
-    <p>Losuje klasy dla 5-osobowej drużyny w WoW: Forever tak, żeby skład działał w dungeonach: 1 tank, 1 healer i 3 DPS, bez powtórek i z kontrolą tłumu.</p>
+    <p>Losuje klasy dla 5-osobowej drużyny w WoW: Forever, osoba po osobie. Skład zawsze działa w dungeonach: 1 tank, 1 healer i 3 DPS, bez powtórek i z kontrolą tłumu.</p>
   </header>
 
   <div class="grid">
     <section class="panel" aria-label="Koło losowania">
       <div class="wheel-box">
         <canvas id="wheel" width="760" height="760" aria-hidden="true"></canvas>
-        <div class="pointer"></div>
+        <div class="pointer" id="pointer"></div>
+        <div class="banner" id="banner"><div class="b-inner"><div class="b-name" id="bName"></div><div class="b-cls" id="bCls"></div></div></div>
       </div>
-      <div class="now" id="now" aria-live="polite">Gotowi do losowania</div>
+      <div class="now" id="now" aria-live="polite">Kto pierwszy?</div>
       <div class="btns">
-        <button class="primary" id="rollAll">Losuj drużynę</button>
+        <button class="primary" id="spinNext">Kręć</button>
       </div>
       <p class="err" id="err" role="alert"></p>
 
@@ -201,12 +229,13 @@ textarea.copybox {
         <label class="opt"><input type="checkbox" id="optCC" checked><span>Min. 2 klasy z kontrolą tłumu<small>Polymorph, Sap, Fear, Freezing Trap, Hibernate…</small></span></label>
         <label class="opt"><input type="checkbox" id="optRace" checked><span>Losuj też rasę i specjalizację</span></label>
         <label class="opt"><input type="checkbox" id="optSky"><span>Rasa Skyborne dozwolona<small>Wymaga płatnego Heroic Pack</small></span></label>
+        <label class="opt"><input type="checkbox" id="optSound" checked><span>Dźwięk</span></label>
         <label class="opt"><input type="checkbox" id="optFast"><span>Szybkie losowanie bez kręcenia</span></label>
       </div>
     </section>
 
     <section class="panel" aria-label="Drużyna">
-      <div class="label">Drużyna · możesz wpisać imiona i wybrać rolę, jeśli ktoś ma preferencję</div>
+      <div class="label">Drużyna · kliknij „Kręć” przy osobie albo duży przycisk, żeby losować po kolei</div>
       <div class="party" id="party"></div>
 
       <div class="summary">
@@ -214,10 +243,11 @@ textarea.copybox {
         <div class="chips" id="buffs"></div>
         <div class="copy-row">
           <button id="copyBtn" disabled>Kopiuj na Discorda</button>
+          <button id="resetBtn">Nowa runda</button>
           <span id="copyMsg" aria-live="polite"></span>
         </div>
         <textarea class="copybox" id="copyBox" readonly hidden aria-label="Tekst do skopiowania"></textarea>
-        <p class="note">Rasy i nowe połączenia (np. Undead Paladin, Dwarf Shaman) według zapowiedzi Blizzarda dla WoW: Forever, premiera 4 listopada 2026. Role tanka i healera przyjęte jak w Classic; po premierze mogą się różnić.</p>
+        <p class="note">Rasy i nowe połączenia (np. Undead Paladin, Dwarf Shaman) według zapowiedzi Blizzarda dla WoW: Forever, premiera 4 listopada 2026. Role tanka i healera według informacji z bety; po premierze mogą się różnić.</p>
       </div>
     </section>
   </div>
@@ -265,19 +295,31 @@ textarea.copybox {
     ],
   };
   const FACTION_NAME = { alliance: "Przymierze", horde: "Horda" };
+  const FACTION_COLOR = { alliance: "#4a8cff", horde: "#e2473a" };
   const ROLE_NAME = { tank: "Tank", healer: "Healer", dps: "DPS", any: "Dowolna rola" };
   const ROLE_ICON = { tank: "T", healer: "H", dps: "D" };
   const ROLE_EMOJI = { tank: "🛡️", healer: "💚", dps: "⚔️" };
 
   const DEFAULT_NAMES = ["Weronika", "Maciej", "Aga", "Adrian", "Damian"];
   const STORE_KEY = "kolo-klas-forever-v2";
+  const OPT_IDS = ["optUnique", "optWarTank", "optCC", "optRace", "optSky", "optSound", "optFast"];
 
+  // players[i].result = odkryty wynik; plan = ukryty, z góry poprawny skład dla całej drużyny
   const state = {
     faction: "random",
-    players: DEFAULT_NAMES.map(n => ({ name: n, pref: "any", result: null })),
-    rolledFaction: null,
+    players: DEFAULT_NAMES.map(n => ({ name: n, pref: "any", result: null, roleShown: null })),
+    plan: null,
     spinning: false,
   };
+
+  const $ = id => document.getElementById(id);
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  const shuffle = arr => { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const opt = id => $(id).checked;
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const reduced = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const instant = () => opt("optFast") || reduced;
+  const revealedCount = () => state.players.filter(p => p.result).length;
 
   // --- pamięć ustawień w tej przeglądarce (opcjonalnie) ---
   function save() {
@@ -285,7 +327,7 @@ textarea.copybox {
       localStorage.setItem(STORE_KEY, JSON.stringify({
         faction: state.faction,
         players: state.players.map(p => ({ name: p.name, pref: p.pref })),
-        opts: ["optUnique", "optWarTank", "optCC", "optRace", "optSky", "optFast"].reduce((o, id) => (o[id] = $(id).checked, o), {}),
+        opts: OPT_IDS.reduce((o, id) => (o[id] = $(id).checked, o), {}),
       }));
     } catch (e) {}
   }
@@ -302,26 +344,10 @@ textarea.copybox {
     } catch (e) {}
   }
 
-  const $ = id => document.getElementById(id);
-  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
-  const shuffle = arr => { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
-  const opt = id => $(id).checked;
-
   // --- logika losowania ---
-  function assignRoles() {
-    const slots = ["tank", "healer", "dps", "dps", "dps"];
-    const roles = new Array(5).fill(null);
-    state.players.forEach((p, i) => {
-      if (p.pref === "any") return;
-      const k = slots.indexOf(p.pref);
-      if (k === -1) throw new Error(p.pref === "dps"
-        ? "Więcej niż 3 osoby chcą grać DPS. W drużynie są 3 miejsca na DPS, zmień komuś rolę na „Dowolna”."
-        : `Więcej niż jedna osoba chce grać jako ${ROLE_NAME[p.pref]}. W drużynie jest 1 tank i 1 healer.`);
-      slots.splice(k, 1);
-      roles[i] = p.pref;
-    });
-    const rest = shuffle(slots);
-    return roles.map(r => r || rest.pop());
+  function canPlay(c, role) {
+    if (role === "tank" && opt("optWarTank")) return c.id === "warrior";
+    return c.roles.includes(role);
   }
 
   function racesFor(faction, clsId) {
@@ -332,11 +358,6 @@ textarea.copybox {
     return CLASSES.filter(c => canPlay(c, role) && !used.includes(c.id) && racesFor(faction, c.id).length);
   }
 
-  function canPlay(c, role) {
-    if (role === "tank" && opt("optWarTank")) return c.id === "warrior";
-    return c.roles.includes(role);
-  }
-
   function ccOk(ids) { return !opt("optCC") || ids.filter(id => BY_ID[id].cc).length >= 2; }
 
   function decorate(role, clsId, faction) {
@@ -345,42 +366,131 @@ textarea.copybox {
     return { role, cls: clsId, spec: pick(c.specs[role]), race: race.name, fresh: race.fresh.includes(clsId) };
   }
 
-  function rollParty() {
-    const faction = state.faction === "random" ? pick(["alliance", "horde"]) : state.faction;
-    const roles = assignRoles();
-    // rola tank/healer najpierw, bo ma najmniejszą pulę klas
-    const order = [0, 1, 2, 3, 4].sort((a, b) => (roles[a] === "dps") - (roles[b] === "dps"));
+  // Układa cały skład; osoby już odkryte zostają bez zmian.
+  function makePlan() {
+    const fixed = state.players.map(p => p.result);
+    const faction = state.plan && fixed.some(Boolean) ? state.plan.faction
+      : state.faction === "random" ? pick(["alliance", "horde"]) : state.faction;
+
+    const slots = ["tank", "healer", "dps", "dps", "dps"];
+    const roles = fixed.map(r => r && r.role);
+    roles.forEach(r => { if (r) slots.splice(slots.indexOf(r), 1); });
+    state.players.forEach((p, i) => {
+      if (roles[i] || p.pref === "any") return;
+      const k = slots.indexOf(p.pref);
+      if (k === -1) throw new Error(p.pref === "dps"
+        ? "Więcej niż 3 osoby chcą grać DPS. W drużynie są 3 miejsca na DPS, zmień komuś rolę na „Dowolna”."
+        : `Więcej niż jedna osoba chce grać jako ${ROLE_NAME[p.pref]}. W drużynie jest 1 tank i 1 healer.`);
+      slots.splice(k, 1);
+      roles[i] = p.pref;
+    });
+    const rest = shuffle(slots);
+    for (let i = 0; i < 5; i++) if (!roles[i]) roles[i] = rest.pop();
+
+    // tank i healer najpierw, bo mają najmniejszą pulę klas
+    const open = [0, 1, 2, 3, 4].filter(i => !fixed[i]).sort((a, b) => (roles[a] === "dps") - (roles[b] === "dps"));
     for (let tries = 0; tries < 1000; tries++) {
-      const picked = new Array(5);
+      const picked = fixed.map(r => r && r.cls);
       let ok = true;
-      for (const i of order) {
+      for (const i of open) {
         const used = opt("optUnique") ? picked.filter(Boolean) : [];
         const pool = poolFor(roles[i], used, faction);
         if (!pool.length) { ok = false; break; }
         picked[i] = pick(pool).id;
       }
       if (ok && ccOk(picked)) {
-        return { faction, results: picked.map((id, i) => decorate(roles[i], id, faction)) };
+        return { faction, results: picked.map((id, i) => fixed[i] || decorate(roles[i], id, faction)) };
       }
     }
-    throw new Error("Nie da się ułożyć składu przy tych zasadach. Wyłącz którąś z opcji i spróbuj ponownie.");
+    throw new Error("Nie da się ułożyć składu przy tych zasadach. Wyłącz którąś z opcji albo zacznij nową rundę.");
+  }
+
+  function replan() {
+    $("err").textContent = "";
+    try { state.plan = makePlan(); return true; }
+    catch (e) { state.plan = null; $("err").textContent = e.message; return false; }
   }
 
   function rerollOne(i) {
     const cur = state.players[i].result;
-    const faction = state.rolledFaction;
-    const others = state.players.filter((_, j) => j !== i).map(p => p.result.cls);
+    const faction = state.plan.faction;
+    const others = state.plan.results.filter((_, j) => j !== i).map(r => r.cls);
     const used = opt("optUnique") ? others : [];
-    let pool = poolFor(cur.role, used, faction).filter(c => ccOk([...others, c.id]));
-    const fresh = pool.filter(c => c.id !== cur.cls);
-    if (!fresh.length) throw new Error(`Dla roli ${ROLE_NAME[cur.role]} nie ma innej wolnej klasy przy tych zasadach.`);
-    return decorate(cur.role, pick(fresh).id, faction);
+    const pool = poolFor(cur.role, used, faction).filter(c => c.id !== cur.cls && ccOk([...others, c.id]));
+    if (!pool.length) throw new Error(`Dla roli ${ROLE_NAME[cur.role]} nie ma innej wolnej klasy przy tych zasadach.`);
+    return decorate(cur.role, pick(pool).id, faction);
+  }
+
+  // --- dźwięk (WebAudio, startuje po pierwszym kliknięciu) ---
+  let actx = null;
+  function audio() {
+    if (!opt("optSound")) return null;
+    try {
+      if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+      if (actx.state === "suspended") actx.resume();
+      return actx;
+    } catch (e) { return null; }
+  }
+  function tone(freq, start, dur, type = "triangle", vol = 0.12) {
+    const a = audio(); if (!a) return;
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = type; o.frequency.value = freq;
+    const t = a.currentTime + start;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(a.destination);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+  const tick = () => tone(1400, 0, 0.04, "square", 0.04);
+  const blip = () => tone(520, 0, 0.06, "square", 0.05);
+  function fanfare(big) {
+    const notes = big ? [523, 659, 784, 1047, 1319] : [523, 659, 784, 1047];
+    notes.forEach((f, k) => tone(f, k * 0.09, 0.35 + (k === notes.length - 1 ? 0.5 : 0), "triangle", 0.11));
+  }
+
+  // --- konfetti ---
+  const fx = $("fx"), fctx = fx.getContext("2d");
+  let parts = [], fxRunning = false;
+  function confetti(colors, count, originEl) {
+    if (reduced) return;
+    const dpr = window.devicePixelRatio || 1;
+    fx.width = innerWidth * dpr; fx.height = innerHeight * dpr;
+    fctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const box = originEl ? originEl.getBoundingClientRect() : { left: 0, top: innerHeight * 0.3, width: innerWidth, height: 0 };
+    for (let k = 0; k < count; k++) {
+      const ang = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.1;
+      const sp = 6 + Math.random() * 9;
+      parts.push({
+        x: box.left + box.width * Math.random(), y: box.top + box.height / 2,
+        vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp,
+        r: 3 + Math.random() * 5, rot: Math.random() * 6, vr: (Math.random() - 0.5) * 0.4,
+        c: pick(colors), life: 0, max: 70 + Math.random() * 50,
+      });
+    }
+    if (!fxRunning) { fxRunning = true; requestAnimationFrame(fxFrame); }
+  }
+  function fxFrame() {
+    fctx.clearRect(0, 0, innerWidth, innerHeight);
+    parts = parts.filter(p => p.life < p.max);
+    for (const p of parts) {
+      p.life++; p.vy += 0.28; p.vx *= 0.985; p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+      fctx.save();
+      fctx.globalAlpha = Math.max(0, 1 - p.life / p.max);
+      fctx.translate(p.x, p.y); fctx.rotate(p.rot);
+      fctx.fillStyle = p.c;
+      fctx.fillRect(-p.r, -p.r / 2, p.r * 2, p.r);
+      fctx.restore();
+    }
+    if (parts.length) requestAnimationFrame(fxFrame);
+    else { fxRunning = false; fctx.clearRect(0, 0, innerWidth, innerHeight); }
   }
 
   // --- koło ---
   const canvas = $("wheel");
   const ctx = canvas.getContext("2d");
   const SEG = (Math.PI * 2) / CLASSES.length;
+  const TAU = Math.PI * 2;
   let rot = 0;
   let highlightRole = null;
 
@@ -421,44 +531,67 @@ textarea.copybox {
     });
     ctx.restore();
     ctx.beginPath();
-    ctx.arc(C, C, 58, 0, Math.PI * 2);
+    ctx.arc(C, C, 58, 0, TAU);
     ctx.fillStyle = "#1a1d27";
     ctx.fill();
     ctx.lineWidth = 6;
     ctx.strokeStyle = "#d8b25a";
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(C, C, R + 4, 0, Math.PI * 2);
+    ctx.arc(C, C, R + 4, 0, TAU);
     ctx.lineWidth = 8;
     ctx.stroke();
   }
 
-  const reduced = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const segUnderPointer = () => Math.floor((((-rot) % TAU + TAU) % TAU) / SEG);
+
+  function nudgePointer() {
+    const el = $("pointer");
+    if (el.animate) el.animate([{ transform: "rotate(-14deg)" }, { transform: "rotate(0deg)" }], { duration: 120, easing: "ease-out" });
+  }
 
   function spinTo(clsId, role) {
     highlightRole = role;
     const k = CLASSES.findIndex(c => c.id === clsId);
     const jitter = (Math.random() - 0.5) * SEG * 0.7;
     const want = -(k + 0.5) * SEG + jitter;
-    const TAU = Math.PI * 2;
-    let delta = ((want - rot) % TAU + TAU) % TAU;
-    if (opt("optFast") || reduced) {
+    const delta = ((want - rot) % TAU + TAU) % TAU;
+    if (instant()) {
       rot += delta; drawWheel();
-      return new Promise(r => setTimeout(r, 120));
+      return wait(120);
     }
-    const from = rot, to = rot + delta + TAU * (3 + Math.floor(Math.random() * 2));
-    const dur = 2200 + Math.random() * 500;
+    const from = rot, to = rot + delta + TAU * (4 + Math.floor(Math.random() * 3));
+    const dur = 3600 + Math.random() * 1200;
     const t0 = performance.now();
+    let lastSeg = segUnderPointer();
     return new Promise(resolve => {
       function frame(t) {
         const p = Math.min(1, (t - t0) / dur);
         const e = 1 - Math.pow(1 - p, 4);
         rot = from + (to - from) * e;
         drawWheel();
-        if (p < 1) requestAnimationFrame(frame); else setTimeout(resolve, 350);
+        const s = segUnderPointer();
+        if (s !== lastSeg) { lastSeg = s; tick(); nudgePointer(); }
+        if (p < 1) requestAnimationFrame(frame); else setTimeout(resolve, 250);
       }
       requestAnimationFrame(frame);
     });
+  }
+
+  async function showBanner(name, text, color, ms) {
+    const b = $("banner");
+    $("bName").textContent = name;
+    $("bCls").textContent = text;
+    b.style.setProperty("--cls", color);
+    b.classList.add("show");
+    await wait(instant() ? 600 : ms);
+    b.classList.remove("show");
+  }
+
+  function flashNow(text) {
+    const n = $("now");
+    n.textContent = text;
+    n.classList.remove("flash"); void n.offsetWidth; n.classList.add("flash");
   }
 
   // --- widok ---
@@ -468,42 +601,58 @@ textarea.copybox {
     state.players.forEach((p, i) => {
       const r = p.result;
       const c = r && BY_ID[r.cls];
+      const role = r ? r.role : p.roleShown;
       const el = document.createElement("div");
       el.className = "member" + (i === activeIdx ? " active" : "");
+      el.id = "member" + i;
       if (c) el.style.setProperty("--cls", c.color);
       el.innerHTML = `
-        <div class="role-ic ${r ? r.role : ""}" title="${r ? ROLE_NAME[r.role] : "Rola nie wylosowana"}">${r ? ROLE_ICON[r.role] : "?"}</div>
+        <div class="role-ic ${role || ""}" id="roleIc${i}" title="${role ? ROLE_NAME[role] : "Rola nie wylosowana"}">${role ? ROLE_ICON[role] : "?"}</div>
         <div class="m-main">
           <div class="m-top">
             <input id="name${i}" value="" aria-label="Imię gracza ${i + 1}" maxlength="20">
-            <select id="pref${i}" aria-label="Preferowana rola gracza ${i + 1}">
+            <select id="pref${i}" aria-label="Preferowana rola gracza ${i + 1}" ${r ? "disabled" : ""}>
               ${["any", "tank", "healer", "dps"].map(v => `<option value="${v}" ${p.pref === v ? "selected" : ""}>${ROLE_NAME[v]}</option>`).join("")}
             </select>
           </div>
           <div class="m-result">${r
             ? `<span class="cls-name">${c.name}</span>${r.fresh && opt("optRace") ? '<span class="new-badge">nowe</span>' : ""}
                <div class="m-sub">${ROLE_NAME[r.role]}${opt("optRace") ? ` · ${r.spec} · ${r.race}` : ""}</div>`
-            : `<span class="placeholder">jeszcze nie wylosowano</span>`}</div>
+            : role
+              ? `<span class="placeholder">${ROLE_NAME[role]} · kręcimy…</span>`
+              : `<span class="mystery">? ? ?</span>`}</div>
         </div>
-        <button class="reroll" data-i="${i}" ${r && !state.spinning ? "" : "disabled"} title="Przelosuj klasę, rola zostaje">Przelosuj</button>`;
+        ${r
+          ? `<button class="small-btn reroll" data-i="${i}" ${state.spinning ? "disabled" : ""} title="Przelosuj klasę, rola zostaje">Przelosuj</button>`
+          : `<button class="small-btn go spin-one" data-i="${i}" ${state.spinning ? "disabled" : ""}>Kręć</button>`}`;
       el.querySelector("input").value = p.name;
       box.appendChild(el);
     });
   }
 
   function renderSummary() {
-    const done = state.players.every(p => p.result);
-    const ids = done ? state.players.map(p => p.result.cls) : [];
+    const ids = state.players.filter(p => p.result).map(p => p.result.cls);
+    const done = ids.length === 5;
     $("buffs").innerHTML = CLASSES.map(c =>
       `<span class="chip ${ids.includes(c.id) ? "on" : ""}" title="${c.name}">${c.buff}</span>`).join("") +
       (done ? `<span class="chip on">Kontrola tłumu: ${ids.filter(id => BY_ID[id].cc).length} klasy</span>` : "") +
-      (done && ids.includes("druid") ? `<span class="chip on">Wskrzeszanie w walce (Rebirth)</span>` : "");
+      (ids.includes("druid") ? `<span class="chip on">Wskrzeszanie w walce (Rebirth)</span>` : "");
     $("copyBtn").disabled = !done || state.spinning;
   }
 
+  function renderMain() {
+    const next = state.players.find(p => !p.result);
+    const btn = $("spinNext");
+    btn.textContent = next ? `Kręć dla: ${next.name}` : "Nowa drużyna";
+    btn.disabled = state.spinning;
+    $("resetBtn").disabled = state.spinning;
+  }
+
+  function renderAll(activeIdx) { renderParty(activeIdx); renderSummary(); renderMain(); }
+
   function copyText() {
     const showRace = opt("optRace");
-    const lines = [`**Skład WoW: Forever · ${FACTION_NAME[state.rolledFaction]}**`];
+    const lines = [`**Skład WoW: Forever · ${FACTION_NAME[state.plan.faction]}**`];
     state.players.forEach(p => {
       const r = p.result, c = BY_ID[r.cls];
       lines.push(`${ROLE_EMOJI[r.role]} ${p.name}: **${c.name}**${showRace ? ` (${r.spec}), ${r.race}` : ""}`);
@@ -511,69 +660,126 @@ textarea.copybox {
     return lines.join("\n");
   }
 
-  function setBusy(b) {
-    state.spinning = b;
-    $("rollAll").disabled = b;
-    document.querySelectorAll(".reroll").forEach(btn => btn.disabled = b || !state.players[btn.dataset.i].result);
-    renderSummary();
-  }
-
-  async function doRollAll() {
-    $("err").textContent = "";
-    let res;
-    try { res = rollParty(); } catch (e) { $("err").textContent = e.message; return; }
-    state.rolledFaction = res.faction;
-    state.players.forEach(p => p.result = null);
-    setBusy(true);
-    renderParty();
-    $("now").textContent = `Frakcja: ${FACTION_NAME[res.faction]}`;
-    // losujemy w kolejności: tank, healer, potem DPS
-    const order = [0, 1, 2, 3, 4].sort((a, b) => ["tank", "healer", "dps"].indexOf(res.results[a].role) - ["tank", "healer", "dps"].indexOf(res.results[b].role));
-    for (const i of order) {
-      const r = res.results[i];
-      renderParty(i);
-      $("now").textContent = `${state.players[i].name} · ${ROLE_NAME[r.role]}…`;
-      await spinTo(r.cls, r.role);
-      state.players[i].result = r;
-      renderParty(i);
-      $("now").textContent = `${state.players[i].name}: ${BY_ID[r.cls].name}`;
+  // --- przebieg losowania jednej osoby ---
+  async function rollRole(i, role) {
+    const ic = $("roleIc" + i);
+    if (!instant()) {
+      const seq = ["tank", "healer", "dps"];
+      for (let k = 0; k < 12; k++) {
+        const r = seq[k % 3];
+        ic.className = "role-ic " + r; ic.textContent = ROLE_ICON[r];
+        blip();
+        await wait(60 + k * 12);
+      }
     }
-    highlightRole = null;
-    drawWheel();
-    renderParty();
-    $("now").textContent = `Drużyna gotowa · ${FACTION_NAME[res.faction]}`;
-    setBusy(false);
+    state.players[i].roleShown = role;
+    ic.className = "role-ic " + role; ic.textContent = ROLE_ICON[role];
+    tone(880, 0, 0.18, "triangle", 0.1);
   }
 
-  async function doReroll(i) {
-    $("err").textContent = "";
-    let r;
-    try { r = rerollOne(i); } catch (e) { $("err").textContent = e.message; return; }
-    setBusy(true);
+  async function spinPlayer(i) {
+    if (state.spinning || state.players[i].result) return;
+    audio();
+    if (!state.plan && !replan()) return;
+    const r = state.plan.results[i];
+    const name = state.players[i].name;
+    state.spinning = true;
+    renderAll(i);
+
+    if (revealedCount() === 0) {
+      const f = state.plan.faction;
+      flashNow(`Gramy za: ${FACTION_NAME[f]}!`);
+      fanfare(false);
+      await showBanner("Frakcja", FACTION_NAME[f], FACTION_COLOR[f], 1500);
+    }
+
+    $("now").textContent = `${name} · jaka rola?`;
+    await rollRole(i, r.role);
     renderParty(i);
-    $("now").textContent = `${state.players[i].name} · ${ROLE_NAME[r.role]}…`;
+    flashNow(`${name} gra jako ${ROLE_NAME[r.role]}!`);
+    await wait(instant() ? 0 : 700);
+
+    $("now").textContent = `${name} · ${ROLE_NAME[r.role]} · kręcimy…`;
     await spinTo(r.cls, r.role);
+
     state.players[i].result = r;
     highlightRole = null;
     drawWheel();
-    renderParty();
-    $("now").textContent = `${state.players[i].name}: ${BY_ID[r.cls].name}`;
-    setBusy(false);
+    const c = BY_ID[r.cls];
+    const last = revealedCount() === 5;
+    renderAll(i);
+    const card = $("member" + i);
+    card.classList.add("pop");
+    flashNow(`${name}: ${c.name}!`);
+    fanfare(last);
+    confetti([c.color, "#d8b25a", "#ffffff"], last ? 90 : 60, card);
+    await showBanner(name, c.name, c.color, 1500);
+
+    if (last) {
+      flashNow(`Drużyna gotowa · ${FACTION_NAME[state.plan.faction]}`);
+      confetti(state.players.map(p => BY_ID[p.result.cls].color).concat("#d8b25a"), 220, null);
+    } else {
+      const next = state.players.find(p => !p.result);
+      $("now").textContent = `Następny: ${next.name}`;
+    }
+    state.spinning = false;
+    renderAll();
+  }
+
+  async function doReroll(i) {
+    if (state.spinning) return;
+    audio();
+    $("err").textContent = "";
+    let r;
+    try { r = rerollOne(i); } catch (e) { $("err").textContent = e.message; return; }
+    state.spinning = true;
+    renderAll(i);
+    $("now").textContent = `${state.players[i].name} · ${ROLE_NAME[r.role]} · kręcimy jeszcze raz…`;
+    await spinTo(r.cls, r.role);
+    state.players[i].result = r;
+    state.plan.results[i] = r;
+    highlightRole = null;
+    drawWheel();
+    renderAll(i);
+    const c = BY_ID[r.cls];
+    $("member" + i).classList.add("pop");
+    flashNow(`${state.players[i].name}: ${c.name}!`);
+    fanfare(false);
+    confetti([c.color, "#d8b25a"], 50, $("member" + i));
+    state.spinning = false;
+    renderAll();
+  }
+
+  function newRound() {
+    state.players.forEach(p => { p.result = null; p.roleShown = null; });
+    state.plan = null;
+    highlightRole = null;
+    $("err").textContent = "";
+    $("copyBox").hidden = true;
+    $("now").textContent = "Kto pierwszy?";
+    drawWheel();
+    renderAll();
   }
 
   // --- zdarzenia ---
-  $("rollAll").addEventListener("click", doRollAll);
+  $("spinNext").addEventListener("click", () => {
+    const k = state.players.findIndex(p => !p.result);
+    if (k === -1) newRound(); else spinPlayer(k);
+  });
+  $("resetBtn").addEventListener("click", () => { if (!state.spinning) newRound(); });
   $("party").addEventListener("click", e => {
+    const go = e.target.closest(".spin-one");
+    if (go) return spinPlayer(+go.dataset.i);
     const b = e.target.closest(".reroll");
-    if (b && !state.spinning) doReroll(+b.dataset.i);
+    if (b) doReroll(+b.dataset.i);
   });
   $("party").addEventListener("input", e => {
     const m = e.target.id.match(/^name(\d)$/);
-    if (m) { state.players[+m[1]].name = e.target.value.trim() || `Gracz ${+m[1] + 1}`; save(); }
+    if (m) { state.players[+m[1]].name = e.target.value.trim() || `Gracz ${+m[1] + 1}`; save(); renderMain(); }
   });
   $("party").addEventListener("change", e => {
     const m = e.target.id.match(/^pref(\d)$/);
-    if (m) { state.players[+m[1]].pref = e.target.value; $("err").textContent = ""; save(); }
+    if (m) { state.players[+m[1]].pref = e.target.value; save(); replan(); }
   });
   $("factionSeg").addEventListener("click", e => {
     const b = e.target.closest("button");
@@ -581,9 +787,12 @@ textarea.copybox {
     state.faction = b.dataset.v;
     document.querySelectorAll("#factionSeg button").forEach(x => x.setAttribute("aria-pressed", x === b));
     save();
+    if (revealedCount()) $("err").textContent = "Frakcja jest już wylosowana. Nowa frakcja wejdzie od następnej rundy.";
+    else replan();
   });
   document.querySelectorAll(".opts input").forEach(i => i.addEventListener("change", () => {
     save();
+    if (["optUnique", "optWarTank", "optCC", "optSky"].includes(i.id) && !state.spinning) replan();
     if (i.id === "optRace") renderParty();
   }));
   $("copyBtn").addEventListener("click", () => {
@@ -604,16 +813,9 @@ textarea.copybox {
   // --- start ---
   load();
   document.querySelectorAll("#factionSeg button").forEach(x => x.setAttribute("aria-pressed", x.dataset.v === state.faction));
-  // przykładowy skład na start, żeby było widać, jak wygląda wynik
-  try {
-    const res = rollParty();
-    state.rolledFaction = res.faction;
-    res.results.forEach((r, i) => state.players[i].result = r);
-    $("now").textContent = "Przykładowy skład. Kliknij „Losuj drużynę”";
-  } catch (e) {}
+  replan();
   drawWheel();
-  renderParty();
-  renderSummary();
+  renderAll();
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(drawWheel);
 })();
 </script>
