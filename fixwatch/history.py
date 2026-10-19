@@ -17,6 +17,11 @@ DEFAULT_WINDOW = 180.0
 # Krócej niż tyle nie liczymy nic – przy dwóch pomiarach w odstępie paru sekund
 # różnica obrotu to szum, nie napływ.
 MIN_SPAN = 40.0
+# Podłoga obrotu w mianowniku skali napływu. Bez niej rynek, na którym zmatchowało się
+# 5 jednostek, pokazuje "napływ 1723% obrotu" przy 91 wpłaconych – liczba bez treści.
+# Z podłogą mały rynek musi dostać prawdziwe pieniądze, żeby skala cokolwiek znaczyła,
+# a świeży rynek z dużym napływem nadal ją przebija (12 000 / 500 = 24x).
+MIN_MATCHED_BEFORE = 500.0
 
 
 @dataclass
@@ -32,8 +37,11 @@ class Delta:
 
     @property
     def inflow_ratio(self):
-        """Napływ jako krotność tego, co na rynku leżało wcześniej."""
-        return self.money_in / max(self.matched_before, 1.0)
+        """Napływ jako krotność tego, co na rynku leżało wcześniej.
+
+        Mianownik ma podłogę, bo na rynku z obrotem 5 każda wpłata to tysiące procent.
+        """
+        return self.money_in / max(self.matched_before, MIN_MATCHED_BEFORE)
 
     @property
     def prob_move(self):

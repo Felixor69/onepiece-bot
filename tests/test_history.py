@@ -72,3 +72,20 @@ def test_forget_prunes_dead_markets():
     assert len(h) == 2
     h.forget(["a"])
     assert len(h) == 1
+
+
+def test_tiny_market_cannot_fake_a_huge_ratio():
+    """Realny przypadek z pomiaru: 91 wplaconych na rynku z obrotem 5 dawalo 1723%."""
+    h = History()
+    h.update(snap(5, 2.00, 2.00), now=0)
+    d = h.update(snap(96, 1.90, 2.10), now=60)
+    assert d.money_in == 91
+    assert d.inflow_ratio < 0.3, "taki rynek nie moze przebic progu skali"
+
+
+def test_fresh_market_with_real_money_still_passes():
+    """Podloga nie moze zablokowac swiezego rynku, na ktory wpadl prawdziwy hajs."""
+    h = History()
+    h.update(snap(200, 2.00, 2.00), now=0)
+    d = h.update(snap(12200, 1.70, 2.42), now=60)
+    assert d.inflow_ratio > 1.0

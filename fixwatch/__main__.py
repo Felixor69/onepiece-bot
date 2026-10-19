@@ -17,7 +17,7 @@ import requests
 from dotenv import load_dotenv
 
 from . import betfair, betsapi
-from .detector import Config, MarketSnapshot, evaluate
+from .detector import Config, MarketSnapshot, evaluate, money
 from .history import History
 from .notify import notify
 
@@ -97,9 +97,12 @@ def scan(fetch, cfg, alerted, history, cooldown=DEFAULT_COOLDOWN, now=None):
     snapshots = build_snapshots(*fetch())
     history.forget([s.market_id for s in snapshots])
 
-    alerts = []
+    alerts, moves = [], []
     for s in snapshots:
-        alert = evaluate(s, cfg, history.update(s, now))
+        delta = history.update(s, now)
+        if delta is not None:
+            moves.append((delta, s))
+        alert = evaluate(s, cfg, delta)
         if alert:
             alerts.append(alert)
     alerts.sort(key=lambda a: a.score, reverse=True)
@@ -117,6 +120,14 @@ def scan(fetch, cfg, alerted, history, cooldown=DEFAULT_COOLDOWN, now=None):
         sent += 1
     print(f"[INFO] Przeskanowano {len(snapshots)} rynków (w pamięci {len(history)}), "
           f"napływów: {len(alerts)}, wysłanych: {sent}")
+    # Największy ruch w tym skanie trafia do logu także wtedy, gdy nie przebił progów.
+    # Dzięki temu journal sam zbiera dane do kalibracji SPIKE_* – bez tego nie da się
+    # odpowiedzieć, czy progi są za wysokie, czy po prostu nic się nie dzieje.
+    if moves:
+        delta, s = max(moves, key=lambda m: m[0].money_in)
+        print(f"[INFO] Największy napływ w oknie: {money(delta.money_in)} "
+              f"(skala {delta.inflow_ratio:.0%}, ruch {abs(delta.prob_move):.0%}, "
+              f"{delta.span:.0f} s) {s.competition} | {s.market_name}")
 
 
 def demo():
