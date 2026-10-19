@@ -156,3 +156,13 @@ def test_bad_sides_value_falls_back_to_over(monkeypatch, capsys):
     assert "nieznane" in capsys.readouterr().out
     monkeypatch.setenv("SIDES", "BOTH")
     assert main.load_sides() == "both"
+
+
+def test_startup_line_keeps_its_punctuation(capsys, monkeypatch):
+    """money() zamiast replace na calym zdaniu - inaczej separator zjada przecinki."""
+    from fixwatch.detector import money
+    assert money(10000) == "10 000"
+    cfg = Config()
+    linia = (f"(źródło: betsapi, skan co 45 s, tylko Over, "
+             f"napływ od {money(cfg.spike_min_money)}, kurs od {cfg.min_price:g})")
+    assert "betsapi, skan co 45 s, tylko Over, napływ od 10 000, kurs od 1.5" in linia

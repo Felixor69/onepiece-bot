@@ -209,10 +209,12 @@ def main():
     history = History(window=env_float("SPIKE_WINDOW", 180))
     alerted = {}
     strony = {"over": "tylko Over", "under": "tylko Under", "both": "Over i Under"}
+    # Kwotę formatuje money(), a nie replace(",", " ") na całym zdaniu – inaczej
+    # separator tysięcy zabiera ze sobą przecinki interpunkcyjne.
     print(f"[INFO] Startuję skaner nagłych napływów (źródło: {source}, "
-          f"skan co {interval} s, {strony[cfg.sides]}, napływ od "
-          f"{cfg.spike_min_money:,.0f}".replace(",", " ") +
-          f", kurs od {cfg.min_price:g}). Pierwszy skan tylko zapamiętuje stan rynków.")
+          f"skan co {interval} s, {strony[cfg.sides]}, "
+          f"napływ od {money(cfg.spike_min_money)}, kurs od {cfg.min_price:g}). "
+          f"Pierwszy skan tylko zapamiętuje stan rynków.")
     while True:
         started = time.monotonic()
         try:
