@@ -15,12 +15,12 @@ dla trwających meczów i alarmuje, gdy:
 Alert = (2) oraz (1) lub (3). Przykład ze screena (Panama, 0-0 w 9', Over 1.5 FH po 1.70):
 rynek 59%, model 26% (fair ~3.85), obrót 31k.
 
-Na serwer (Contabo) jako usługa 24/7, alerty na Discord:
+Na serwer (Contabo) jako usługa 24/7, alerty na Discord. Jako root na serwerze:
 ```
-curl -fsSL https://raw.githubusercontent.com/Felixor69/onepiece-bot/claude/busy-ptolemy-anm020/deploy/install.sh \
-  | sudo BETSAPI_TOKEN=... DISCORD_WEBHOOK_URL=... bash
+bash <(curl -fsSL https://raw.githubusercontent.com/Felixor69/onepiece-bot/claude/busy-ptolemy-anm020/deploy/install.sh)
 journalctl -u fixwatch -f   # logi
 ```
+Skrypt zapyta o token BetsAPI i webhook Discorda i wyśle wiadomość testową.
 
 Lokalnie:
 ```

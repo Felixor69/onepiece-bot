@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Instaluje fixwatch na serwerze (Contabo / dowolny Linux z systemd) jako usługę 24/7.
+# Na serwerze jako root (np. w konsoli VNC z panelu Contabo):
 #
-#   curl -fsSL https://raw.githubusercontent.com/Felixor69/onepiece-bot/claude/busy-ptolemy-anm020/deploy/install.sh \
-#     | sudo BETSAPI_TOKEN=... DISCORD_WEBHOOK_URL=... bash
+#   bash <(curl -fsSL https://raw.githubusercontent.com/Felixor69/onepiece-bot/claude/busy-ptolemy-anm020/deploy/install.sh)
 #
-# Ponowne uruchomienie = aktualizacja kodu (istniejący .env zostaje, chyba że podasz nowe wartości).
+# Pyta o token BetsAPI i webhook Discorda (jeśli ich jeszcze nie ma), wysyła wiadomość
+# testową na Discord i odpala usługę. Ponowne uruchomienie = aktualizacja kodu.
 set -euo pipefail
 
 REPO=https://github.com/Felixor69/onepiece-bot.git
@@ -32,9 +33,30 @@ set_env() {
     sed -i "/^$1=/d" "$DIR/.env"
     echo "$1=$2" >> "$DIR/.env"
 }
+ask() {
+    # Pyta tylko gdy wartości nie ma ani w zmiennej, ani w .env.
+    local name=$1 prompt=$2 value=${!1:-}
+    if [ -z "$value" ] && ! grep -q "^$name=." "$DIR/.env"; then
+        read -r -p "$prompt: " value < /dev/tty
+    fi
+    set_env "$name" "$value"
+}
 set_env DATA_SOURCE "${DATA_SOURCE:-betsapi}"
-set_env BETSAPI_TOKEN "${BETSAPI_TOKEN:-}"
-set_env DISCORD_WEBHOOK_URL "${DISCORD_WEBHOOK_URL:-}"
+ask BETSAPI_TOKEN "Token BetsAPI"
+ask DISCORD_WEBHOOK_URL "Webhook Discorda (ustawienia kanału > Integracje > Webhooki > Kopiuj URL)"
+
+cd "$DIR"
+if "$DIR/venv/bin/python" - <<'PY'
+from dotenv import load_dotenv
+from fixwatch.notify import send_discord
+load_dotenv()
+raise SystemExit(0 if send_discord("✅ fixwatch: test połączenia z serwera, alerty będą tutaj.") else 1)
+PY
+then
+    echo "Wiadomość testowa wysłana na Discord."
+else
+    echo "UWAGA: Discord nie przyjął wiadomości – sprawdź webhook w $DIR/.env" >&2
+fi
 
 cat > /etc/systemd/system/fixwatch.service <<EOF
 [Unit]
