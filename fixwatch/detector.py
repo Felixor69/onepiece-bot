@@ -23,8 +23,13 @@ from dataclasses import dataclass, field
 from . import model
 
 
-# Poniżej tylu minut do końca okresu nie ma sensu grać (za mało czasu na gole).
-MIN_REMAINING = 15
+# Poniżej tylu minut do końca okresu model Poissona przestaje cokolwiek znaczyć, więc
+# nie wypisujemy go jako kontekstu. NIE blokuje to zagrania: ustawione mecze rozstrzygają
+# się czasem golem w ostatnich minutach, czyli dokładnie wtedy, gdy ten sygnał jest
+# najciekawszy. Od krótkich kursów chroni MIN_PRICE, nie zegar.
+MODEL_MIN_REMAINING = 15
+# Zostawione pod starą nazwą, bo testy i skrypty analityczne się do niej odwołują.
+MIN_REMAINING = MODEL_MIN_REMAINING
 # Podatek od gier w PL: 12% od stawki. Stawiasz 1, pracuje 0.88, wraca 0.88 * kurs,
 # więc przy kursie 1/0.88 = 1.136 jesteś na zero nawet wygrywając za każdym razem.
 DEFAULT_TAX_RATE = 0.12
@@ -95,6 +100,9 @@ class Config:
     # przedzialem [-12%, +54%], wiec to trop, nie pewnik. Przelacznik istnieje, zeby
     # nie trzeba bylo odwracac strony, warunku i wyjscia w glowie.
     strategy: str = "follow"
+    # Ponizej tylu minut do konca okresu nie gramy. 0 = bez ograniczenia, bo pozny gol
+    # jest typowym sposobem rozstrzygniecia ustawionego meczu.
+    min_remaining: float = 0.0
     # Czy pokazywac regule wyjscia. Domyslnie NIE: nigdy jej nie zmierzylismy, a stosowanie
     # jej zmienia strategie na inna niz ta, dla ktorej mamy jakikolwiek wynik (zaklady
     # rozliczamy trzymaniem do konca okresu). exit_minute() zostaje do analizy offline.
@@ -179,6 +187,9 @@ class Alert:
         # Dwa ograniczenia na kurs: nie oddajemy wiecej niz 20% zysku i nie schodzimy
         # pod prog oplacalnosci po podatku. Obowiazuje wyzszy z nich.
         zysk_floor = 1 + (price - 1) * PROFIT_FLOOR_FRACTION
+        if self.remaining is not None and self.remaining < MODEL_MIN_REMAINING:
+            out.append(f"   UWAGA: zostało tylko ~{self.remaining} min – gol musi paść "
+                       f"niemal od razu, model tego nie wycenia")
         floor = max(zysk_floor, self.min_price)
         powod = ("niżej podatek zjada opłacalność" if floor == self.min_price
                  else f"niżej zostaje mniej niż {PROFIT_FLOOR_FRACTION:.0%} pierwotnego zysku")
@@ -303,15 +314,18 @@ def evaluate(s: MarketSnapshot, cfg: Config, delta=None) -> Alert | None:
         remaining = model.remaining_minutes(s.minute, s.first_half)
         if k <= 0:
             return None     # Over już wszedł, nie ma czego grać
-        if remaining < MIN_REMAINING:
-            return None     # za mało czasu, żeby gole zdążyły paść
+        if remaining < cfg.min_remaining:
+            return None     # tylko gdy ktoś świadomie ustawi min_remaining
         alert.goals_needed = k
         alert.remaining = remaining
-        alert.model_over_prob = model.model_over_prob(
-            s.line, goals, s.minute, s.first_half, cfg.goals_per_90)
+        # Model liczymy wyłącznie, gdy zostało dość czasu, żeby cokolwiek znaczył.
+        # Przy czterech minutach do końca jego "fair" to liczba bez treści.
+        if remaining >= MODEL_MIN_REMAINING:
+            alert.model_over_prob = model.model_over_prob(
+                s.line, goals, s.minute, s.first_half, cfg.goals_per_90)
         base = model.baseline_lambda(s.minute, s.first_half, cfg.goals_per_90)
         lam = model.implied_lambda(p_over, k)
-        if base > 0 and lam is not None:
+        if remaining >= MODEL_MIN_REMAINING and base > 0 and lam is not None:
             alert.rate_ratio = lam / base
             if alert.rate_ratio >= cfg.rate_ratio_high:
                 reasons.append(f"kurs wycenia {alert.rate_ratio:.1f}x normalne tempo goli "

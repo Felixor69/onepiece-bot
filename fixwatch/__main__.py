@@ -77,6 +77,7 @@ def load_config():
         sides=load_sides(),
         strategy=load_strategy(),
         show_exit=env_flag("SHOW_EXIT", False),
+        min_remaining=env_float("MIN_REMAINING", 0),
         spike_min_money=env_float("SPIKE_MIN_MONEY", 10000),
         spike_ratio=env_float("SPIKE_RATIO", 0.3),
         spike_prob_move=env_float("SPIKE_PROB_MOVE", 0.05),

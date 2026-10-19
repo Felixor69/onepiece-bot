@@ -53,8 +53,16 @@ backtest rozlicza zakłady trzymaniem do końca okresu. Zamiast niej alert mówi
 trzymać. `exit_minute()` zostaje w kodzie, bo rozliczanie ma policzyć, czy ta reguła w ogóle
 pomagała.
 
-Filtry kontekstowe: nie alarmujemy, gdy Over już wszedł, gdy do końca okresu zostało mniej
-niż 15 minut (gole nie zdążą paść) ani gdy kurs jest krótszy niż `MIN_PRICE`. Po alercie na danym rynku milczymy `ALERT_COOLDOWN`
+Filtry kontekstowe: nie alarmujemy, gdy Over już wszedł (rynek rozstrzygnięty) ani gdy kurs
+strony obstawianej jest krótszy niż `MIN_PRICE`.
+
+**Czas do końca meczu nie blokuje zagrania** (`MIN_REMAINING=0`). Ustawione mecze rozstrzygają
+się czasem golem w ostatnich minutach, czyli dokładnie wtedy, gdy ten sygnał jest najciekawszy
+– 41% napływów powyżej 20 tys. przychodzi po 85. minucie. Od bezwartościowych zagrań chroni
+tu `MIN_PRICE`, nie zegar: późna kasa na Under idzie po 1.01, co po podatku daje stratę nawet
+przy trafieniu, i to odcina próg kursu. Poniżej 15 minut do końca nie wypisujemy natomiast
+modelu Poissona jako kontekstu, bo na takim oknie liczy bzdury – zamiast niego alert ostrzega,
+ile czasu zostało. Po alercie na danym rynku milczymy `ALERT_COOLDOWN`
 sekund (domyślnie 300) – ten sam napływ siedzi jeszcze w oknie historii, więc bez tego jedno
 zdarzenie poszłoby kilka razy.
 

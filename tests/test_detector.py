@@ -123,10 +123,45 @@ def test_settled_over_ignored():
     assert evaluate(snap(home_goals=1, away_goals=1), Config(), spike()) is None
 
 
-def test_too_little_time_ignored():
-    s = snap(market_name="Over/Under 2.5 Goals", line=2.5, first_half=False, minute=88,
-             home_goals=0, away_goals=0)
-    assert evaluate(s, Config(), spike()) is None
+def pozno(**kw):
+    """Naply w 88' - przy stanie 0-1 do Over 1.5 brakuje jednego gola."""
+    base = dict(market_name="Over/Under 1.5 Goals", line=1.5, first_half=False,
+                minute=88, home_goals=0, away_goals=1)
+    base.update(kw)
+    return snap(**base)
+
+
+def test_pozny_naply_NIE_jest_odrzucany():
+    """Ustawiony mecz rozstrzyga sie czasem golem w 89' - to wtedy sygnal jest najciekawszy."""
+    a = evaluate(pozno(), Config(), spike())
+    assert a is not None, "zegar nie moze blokowac zagrania"
+    assert a.remaining == 6
+    assert a.goals_needed == 1
+
+
+def test_pozno_nie_pokazujemy_modelu():
+    """Poisson przy 6 minutach do konca liczy bzdury, wiec nie wypisujemy go jako kontekstu."""
+    a = evaluate(pozno(), Config(), spike())
+    assert a.model_over_prob is None and a.rate_ratio is None
+    text = a.format()
+    assert "tempo goli" not in text
+    assert "UWAGA: zostało tylko ~6 min" in text
+
+
+def test_pozno_dalej_chroni_prog_kursu():
+    """Pozny naply na Under po 1.01 to gwarantowana strata po podatku - MIN_PRICE go blokuje."""
+    assert evaluate(pozno(over_price=50.0, under_price=1.01),
+                    Config(), spike(prob_before=0.10, prob_now=0.02)) is None
+
+
+def test_min_remaining_mozna_wlaczyc_swiadomie():
+    assert evaluate(pozno(), Config(min_remaining=15), spike()) is None
+    assert evaluate(pozno(), Config(min_remaining=5), spike()) is not None
+
+
+def test_over_juz_wszedl_nadal_odrzucamy():
+    """Tego filtra nie ruszamy - rynek jest rozstrzygniety, nie ma czego grac."""
+    assert evaluate(pozno(home_goals=1, away_goals=1), Config(), spike()) is None
 
 
 def test_excluded_competition():
