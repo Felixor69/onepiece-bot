@@ -82,14 +82,24 @@ def test_price_must_move():
     assert evaluate(snap(), Config(), spike(prob_before=0.58, prob_now=0.59)) is None
 
 
+def under_snap(**kw):
+    base = dict(market_name="Over/Under 2.5 Goals", line=2.5, first_half=False,
+                over_price=2.6, under_price=1.6)
+    base.update(kw)
+    return snap(**base)
+
+
+def under_spike(**kw):
+    base = dict(prob_before=0.50, prob_now=0.38, price_before=1.90, price_now=1.60)
+    base.update(kw)
+    return spike(**base)
+
+
 def test_direction_follows_the_price_move():
-    alert = evaluate(snap(market_name="Over/Under 2.5 Goals", line=2.5, first_half=False,
-                          over_price=6.0, under_price=1.2),
-                     Config(), spike(prob_before=0.30, prob_now=0.17,
-                                     price_before=1.45, price_now=1.20))
+    alert = evaluate(under_snap(), Config(), under_spike())
     assert alert.direction == "under"
     assert alert.runner_label() == "Under 2.5 Goals"
-    assert alert.play_price() == 1.2
+    assert alert.play_price() == 1.6
 
 
 def test_direction_known_without_score():
@@ -137,23 +147,58 @@ def test_format_has_concrete_play_and_movement():
 
 
 def test_under_format_flips_the_condition():
-    text = evaluate(snap(market_name="Over/Under 2.5 Goals", line=2.5, first_half=False,
-                         over_price=6.0, under_price=1.2),
-                    Config(), spike(prob_before=0.30, prob_now=0.17,
-                                    price_before=1.45, price_now=1.20)).format()
+    text = evaluate(under_snap(), Config(), under_spike()).format()
     assert "na UNDER" in text
     assert "może paść najwyżej 2 gole" in text
     assert "gol padnie przed" in text
 
 
-def test_price_floor_never_below_one():
-    text = evaluate(snap(market_name="Over/Under 2.5 Goals", line=2.5, first_half=False,
-                         over_price=6.0, under_price=1.2),
-                    Config(), spike(prob_before=0.30, prob_now=0.17,
-                                    price_before=1.45, price_now=1.20)).format()
-    floor = [ln for ln in text.split("\n") if "Nie bierz kursu" in ln][0]
-    assert "1.16" in floor
-    assert all(float(w) > 1.0 for w in floor.split() if w.replace(".", "").isdigit())
+# --- oplacalnosc po podatku -------------------------------------------------
+
+def test_short_price_is_not_worth_playing():
+    """Kurs 1.30 to netto 1.14 - podatek zjada marze, wiec nie zawracamy glowy."""
+    assert evaluate(under_snap(under_price=1.3), Config(),
+                    under_spike(price_now=1.30)) is None
+    assert evaluate(snap(over_price=1.2), Config(), spike(price_now=1.20)) is None
+
+
+def test_min_price_boundary_passes():
+    alert = evaluate(under_snap(under_price=1.5), Config(), under_spike(price_now=1.50))
+    assert alert is not None and alert.play_price() == 1.5
+
+
+def test_min_price_is_configurable():
+    cfg = Config(min_price=1.9)
+    assert evaluate(snap(), cfg, spike()) is None, "Over po 1.70 nie przechodzi progu 1.90"
+    assert evaluate(snap(over_price=2.0), Config(min_price=1.9), spike()) is not None
+
+
+def test_net_price_after_tax_is_shown():
+    text = evaluate(snap(), Config(), spike()).format()
+    # 1.70 * 0.88 = 1.496
+    assert "Po podatku: kurs 1.7 = netto 1.50, czyli +50% ze stawki" in text
+
+
+def test_floor_never_goes_under_min_price():
+    """Przy kursie 1.55 ulamek zysku dalby 1.44, czyli kurs, ktorego i tak nie zagramy."""
+    alert = evaluate(under_snap(under_price=1.55), Config(), under_spike(price_now=1.55))
+    floor = [ln for ln in alert.format().split("\n") if "Nie bierz kursu" in ln][0]
+    assert "1.50" in floor
+    assert "podatek zjada opłacalność" in floor
+
+
+def test_floor_uses_profit_rule_when_it_is_higher():
+    floor = [ln for ln in evaluate(snap(), Config(), spike()).format().split("\n")
+             if "Nie bierz kursu" in ln][0]
+    assert "1.56" in floor, "przy kursie 1.70 wiazace jest 80% zysku, nie prog podatkowy"
+
+
+def test_net_price_helper():
+    from fixwatch.detector import net_price
+    assert round(net_price(1.70), 3) == 1.496
+    assert round(net_price(2.00), 2) == 1.76
+    # Prog, przy ktorym wygrywajac zawsze wychodzisz na zero.
+    assert round(net_price(1 / 0.88), 6) == 1.0
 
 
 def test_exit_minute_stays_in_period():

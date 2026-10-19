@@ -89,5 +89,5 @@ def test_new_spike_after_cooldown_is_sent(monkeypatch):
     assert len(sent) == 1
     # Po cooldownie kolejny gwaltowny naply to nowe zdarzenie i ma dojsc.
     main.scan(feed(1.70, 2.42, 31500), Config(), alerted, history, now=600)
-    main.scan(feed(1.30, 3.60, 60000), Config(), alerted, history, now=700)
+    main.scan(feed(1.55, 2.80, 60000), Config(), alerted, history, now=700)
     assert len(sent) == 2

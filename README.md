@@ -10,11 +10,18 @@ stronie zjeżdża**. To znaczy, że ktoś coś wie – i z tego da się zagrać 
 
 Wyzwalacz to RUCH, nie stan. Liczony między dwoma pomiarami tego samego rynku:
 
-1. **Napływ** – w oknie wpadło co najmniej `SPIKE_MIN_MONEY` (domyślnie 2000).
+1. **Napływ** – w oknie wpadło co najmniej `SPIKE_MIN_MONEY` (domyślnie 10000).
 2. **Skala** – ten napływ to co najmniej `SPIKE_RATIO` (domyślnie 0.3) obrotu, jaki rynek
-   miał wcześniej. Chroni przed alarmem o 2000, które wpadło na rynek z obrotem pół miliona.
+   miał wcześniej. Mianownik ma podłogę 500, bo na rynku z obrotem 5 każda wpłata to
+   tysiące procent.
 3. **Ruch kursu** – implikowana szansa przesunęła się o co najmniej `SPIKE_PROB_MOVE`
    (domyślnie 0.05, czyli 5 punktów procentowych).
+
+Do tego **kurs po stronie napływu musi wynosić co najmniej `MIN_PRICE`** (domyślnie 1.5).
+Polski podatek od gier to 12% od stawki (`TAX_RATE`), więc realnie wraca `0.88 * kurs`:
+kurs 1.20 to netto 1.06 (+6% z wygranej), a przy 1.14 jest się dokładnie na zero nawet
+wygrywając za każdym razem. Krótkie kursy nie mają po co zawracać głowy, a alert i tak
+podaje kurs netto wprost.
 
 **Kierunek zagrania bierzemy z (3)**: rośnie szansa Over = kasa idzie na Over, więc gramy BACK
 Over. To obserwacja rynku, nie wniosek z modelu – dlatego stronę znamy zawsze, także gdy
@@ -34,8 +41,8 @@ Gotowe zagranie, nie liczby: nazwa zakładu z kuponu Betfair, kurs, co musi się
 kurs jaki warto jeszcze wziąć, minuta zamknięcia pozycji, a pod tym „CO SIĘ WŁAŚNIE STAŁO" –
 ile kasy wpadło, w ile sekund i z jakiego kursu na jaki zjechało.
 
-Filtry kontekstowe: nie alarmujemy, gdy Over już wszedł ani gdy do końca okresu zostało mniej
-niż 15 minut (gole nie zdążą paść). Po alercie na danym rynku milczymy `ALERT_COOLDOWN`
+Filtry kontekstowe: nie alarmujemy, gdy Over już wszedł, gdy do końca okresu zostało mniej
+niż 15 minut (gole nie zdążą paść) ani gdy kurs jest krótszy niż `MIN_PRICE`. Po alercie na danym rynku milczymy `ALERT_COOLDOWN`
 sekund (domyślnie 300) – ten sam napływ siedzi jeszcze w oknie historii, więc bez tego jedno
 zdarzenie poszłoby kilka razy.
 

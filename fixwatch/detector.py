@@ -25,6 +25,9 @@ from . import model
 
 # Poniżej tylu minut do końca okresu nie ma sensu grać (za mało czasu na gole).
 MIN_REMAINING = 15
+# Podatek od gier w PL: 12% od stawki. Stawiasz 1, pracuje 0.88, wraca 0.88 * kurs,
+# więc przy kursie 1/0.88 = 1.136 jesteś na zero nawet wygrywając za każdym razem.
+DEFAULT_TAX_RATE = 0.12
 # Nie wchodzimy, jeśli kurs spadł tak, że zostało mniej niż tyle z pierwotnego zysku.
 # Liczone od zysku (kurs - 1), nie od samego kursu: przy kursie 1.2 ułamek kursu dałby
 # próg poniżej 1.0, czyli liczbę, której na giełdzie nie ma.
@@ -34,6 +37,11 @@ PROFIT_FLOOR_FRACTION = 0.8
 def money(value):
     """1234567 -> "1 234 567" (spacje, bo przecinki w kwotach mylą się z interpunkcją)."""
     return f"{value:,.0f}".replace(",", " ")
+
+
+def net_price(price, tax_rate=DEFAULT_TAX_RATE):
+    """Kurs po podatku od stawki – tyle realnie wraca z jednej postawionej jednostki."""
+    return price * (1 - tax_rate)
 
 
 def goals_word(n):
@@ -69,9 +77,14 @@ class MarketSnapshot:
 @dataclass
 class Config:
     # --- wyzwalacz: nagly naplyw ---
-    spike_min_money: float = 2000.0     # ile kasy musi wpasc w oknie
+    spike_min_money: float = 10000.0    # ile kasy musi wpasc w oknie
     spike_ratio: float = 0.3            # ...i ile to ma byc wzgledem obrotu sprzed okna
     spike_prob_move: float = 0.05       # ...przy przesunieciu szansy o tyle (5 pkt proc.)
+    # --- oplacalnosc po podatku ---
+    # Ponizej tego kursu nie gramy: podatek od stawki zjada cala marze (kurs 1.30 to
+    # netto 1.14, czyli +14% z wygranej, a przy 1.14 jest sie dokladnie na zero).
+    min_price: float = 1.5
+    tax_rate: float = DEFAULT_TAX_RATE
     # --- kontekst w tresci alertu ---
     rate_ratio_high: float = 1.7        # rynek wycenia >= 1.7x normalne tempo goli
     rate_ratio_low: float = 0.6         # albo <= 0.6x
@@ -92,6 +105,8 @@ class Alert:
     rate_ratio: float | None = None
     goals_needed: int | None = None     # ile goli jeszcze musi paść, żeby Over wszedł
     remaining: int | None = None        # minut do końca okresu (z doliczonym)
+    tax_rate: float = DEFAULT_TAX_RATE  # do przeliczenia kursu na netto
+    min_price: float = 1.5              # najnizszy kurs, ktory ma sens po podatku
 
     def fair_over_price(self):
         if self.model_over_prob:
@@ -131,9 +146,16 @@ class Alert:
             else:
                 warunek = f"może paść najwyżej {goals_word(self.goals_needed - 1)}"
             out.append(f"   Żeby wygrać: {warunek} w ~{self.remaining} min ({koniec})")
-        floor = 1 + (price - 1) * PROFIT_FLOOR_FRACTION
-        out.append(f"   Nie bierz kursu poniżej {floor:.2f} – niżej zostaje mniej niż "
-                   f"{PROFIT_FLOOR_FRACTION:.0%} pierwotnego zysku, odpuść")
+        netto = net_price(price, self.tax_rate)
+        out.append(f"   Po podatku: kurs {price:g} = netto {netto:.2f}, "
+                   f"czyli +{(netto - 1) * 100:.0f}% ze stawki")
+        # Dwa ograniczenia na kurs: nie oddajemy wiecej niz 20% zysku i nie schodzimy
+        # pod prog oplacalnosci po podatku. Obowiazuje wyzszy z nich.
+        zysk_floor = 1 + (price - 1) * PROFIT_FLOOR_FRACTION
+        floor = max(zysk_floor, self.min_price)
+        powod = ("niżej podatek zjada opłacalność" if floor == self.min_price
+                 else f"niżej zostaje mniej niż {PROFIT_FLOOR_FRACTION:.0%} pierwotnego zysku")
+        out.append(f"   Nie bierz kursu poniżej {floor:.2f} – {powod}, odpuść")
         exit_min = self.exit_minute()
         if exit_min is not None:
             warunek = (f"do {exit_min}' nie padnie gol" if self.direction == "over"
@@ -215,10 +237,17 @@ def evaluate(s: MarketSnapshot, cfg: Config, delta=None) -> Alert | None:
     if abs(delta.prob_move) < cfg.spike_prob_move:
         return None
 
+    # Kurs po stronie napływu musi się opłacać po podatku od stawki. Przy 1.20 netto
+    # wychodzi 1.06, czyli +6% z wygranej – nie ma o co grać, więc nie zawracamy głowy.
+    play_price = s.over_price if delta.side == "over" else s.under_price
+    if play_price < cfg.min_price:
+        return None
+
     p_over, _ = model.implied_probs(s.over_price, s.under_price)
     reasons = []
     alert = Alert(snapshot=s, reasons=reasons, score=0.0, delta=delta,
-                  direction=delta.side, market_over_prob=p_over)
+                  direction=delta.side, market_over_prob=p_over,
+                  tax_rate=cfg.tax_rate, min_price=cfg.min_price)
 
     # --- kontekst z wyniku i minuty ---------------------------------------
     if s.minute is not None and s.home_goals is not None:

@@ -41,9 +41,11 @@ def env_float(name, default):
 def load_config():
     extra = [c.strip() for c in os.getenv("EXCLUDED_COMPETITIONS", "").split(",") if c.strip()]
     return Config(
-        spike_min_money=env_float("SPIKE_MIN_MONEY", 2000),
+        spike_min_money=env_float("SPIKE_MIN_MONEY", 10000),
         spike_ratio=env_float("SPIKE_RATIO", 0.3),
         spike_prob_move=env_float("SPIKE_PROB_MOVE", 0.05),
+        min_price=env_float("MIN_PRICE", 1.5),
+        tax_rate=env_float("TAX_RATE", 0.12),
         rate_ratio_high=env_float("RATE_RATIO_HIGH", 1.7),
         rate_ratio_low=env_float("RATE_RATIO_LOW", 0.6),
         volume_vs_match_odds=env_float("VOLUME_VS_MATCH_ODDS", 2.0),
