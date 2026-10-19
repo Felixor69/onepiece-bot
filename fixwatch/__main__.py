@@ -17,7 +17,7 @@ import requests
 from dotenv import load_dotenv
 
 from . import betfair, betsapi
-from .detector import Config, MarketSnapshot, evaluate, money
+from .detector import Config, MarketSnapshot, evaluate, is_excluded, money
 from .history import History
 from .notify import notify
 
@@ -102,7 +102,10 @@ def scan(fetch, cfg, alerted, history, cooldown=DEFAULT_COOLDOWN, now=None):
     alerts, moves = [], []
     for s in snapshots:
         delta = history.update(s, now)
-        if delta is not None:
+        # Do logu kalibracyjnego biorą się tylko ligi, które bot w ogóle rozważa.
+        # Inaczej raportowałby napływy z Serie A (30 tys. przy ruchu 0%), która jest
+        # wykluczona – i wychodziłoby z tego, że progi są o rząd za niskie.
+        if delta is not None and not is_excluded(s.competition, cfg):
             moves.append((delta, s))
         alert = evaluate(s, cfg, delta)
         if alert:

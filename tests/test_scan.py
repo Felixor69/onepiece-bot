@@ -91,3 +91,46 @@ def test_new_spike_after_cooldown_is_sent(monkeypatch):
     main.scan(feed(1.70, 2.42, 31500), Config(), alerted, history, now=600)
     main.scan(feed(1.55, 2.80, 60000), Config(), alerted, history, now=700)
     assert len(sent) == 2
+
+
+def excluded_feed(over, under, matched):
+    def fetch():
+        m = market("OVER_UNDER_25", "Over/Under 2.5 Goals", over, under, matched)
+        m["competition"] = "Italian Serie A"
+        mo = match_odds(8000)
+        mo["competition"] = "Italian Serie A"
+        return [m, mo], STATE
+    return fetch
+
+
+def real_cfg():
+    """Config jak w produkcji – z lista wykluczonych lig, ktora dokłada load_config()."""
+    return Config(excluded_competitions=main.DEFAULT_EXCLUDED)
+
+
+def test_excluded_league_stays_out_of_the_calibration_log(capsys):
+    """Realny przypadek: Serie A robila 30 tys. naplywu przy ruchu 0% i trafiala do logu,
+    mimo ze jest wykluczona - z czego wychodzilo, ze progi sa o rzad za niskie."""
+    history, alerted = History(), {}
+    main.scan(excluded_feed(2.00, 2.00, 100000), real_cfg(), alerted, history, now=0)
+    main.scan(excluded_feed(1.70, 2.42, 130876), real_cfg(), alerted, history, now=90)
+    out = capsys.readouterr().out
+    assert "Największy napływ" not in out
+    assert "wysłanych: 0" in out
+
+
+def test_excluded_league_never_alerts_either(monkeypatch):
+    sent = []
+    monkeypatch.setattr(main, "notify", lambda a: sent.append(a))
+    history, alerted = History(), {}
+    main.scan(excluded_feed(2.00, 2.00, 100000), real_cfg(), alerted, history, now=0)
+    main.scan(excluded_feed(1.70, 2.42, 130876), real_cfg(), alerted, history, now=90)
+    assert sent == []
+
+
+def test_eligible_league_does_reach_the_calibration_log(capsys):
+    history, alerted = History(), {}
+    main.scan(SPOKOJNY, Config(), alerted, history, now=0)
+    main.scan(feed(1.90, 2.10, 23000), Config(), alerted, history, now=90)
+    out = capsys.readouterr().out
+    assert "Największy napływ w oknie: 4 338" in out
