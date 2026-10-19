@@ -49,7 +49,9 @@ cd "$DIR"
 if "$DIR/venv/bin/python" - <<'PY'
 from dotenv import load_dotenv
 from fixwatch.notify import send_discord
-load_dotenv()
+# Jawna sciezka: skrypt leci przez stdin, a find_dotenv() z golego load_dotenv()
+# wywala sie wtedy na assercie ramki stosu (AssertionError).
+load_dotenv(".env")
 raise SystemExit(0 if send_discord("✅ fixwatch: test połączenia z serwera, alerty będą tutaj.") else 1)
 PY
 then
