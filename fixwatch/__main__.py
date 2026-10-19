@@ -18,8 +18,9 @@ from dotenv import load_dotenv
 
 from . import betfair, betsapi
 from .detector import Config, MarketSnapshot, evaluate, is_excluded, money
+from .health import Watchdog
 from .history import History
-from .notify import notify
+from .notify import notify, send_discord
 from .research import ResearchLog
 
 # Ligi z dużą płynnością – tam duży obrót jest normalny, więc je pomijamy.
@@ -174,6 +175,7 @@ def scan(fetch, cfg, alerted, history, cooldown=DEFAULT_COOLDOWN, now=None,
         print(f"[INFO] Największy napływ w oknie: {money(delta.money_in)} "
               f"(skala {delta.inflow_ratio:.0%}, ruch {abs(delta.prob_move):.0%}, "
               f"{delta.span:.0f} s) {s.competition} | {s.market_name}")
+    return len(snapshots)
 
 
 def demo():
@@ -248,12 +250,24 @@ def main():
     if research.enabled():
         print(f"[INFO] Log badawczy: {research.path}, zapisuję napływy od "
               f"{money(research.min_money)} (niezależnie od filtrów Discorda).")
+    watchdog = Watchdog()
     while True:
         started = time.monotonic()
         try:
-            scan(fetch, cfg, alerted, history, cooldown, research=research)
+            widziane = scan(fetch, cfg, alerted, history, cooldown, research=research)
+            ok = widziane > 0
+            powod = "skan nie zwrócił ani jednego rynku"
         except (requests.RequestException, RuntimeError, KeyError) as e:
+            ok, powod = False, f"{type(e).__name__}: {e}"
             print(f"[ERROR] {e}")
+        # Cisza bota jest normalna, wiec o oslepnieciu trzeba powiedziec wprost.
+        wiadomosc = watchdog.record(ok, powod, time.time())
+        if wiadomosc:
+            print("[WARN] " + wiadomosc.splitlines()[0])
+            try:
+                send_discord(wiadomosc)
+            except requests.RequestException as e:
+                print(f"[WARN] Nie udało się wysłać ostrzeżenia o awarii: {e}")
         if args.once:
             break
         # Sam skan trwa przy pełnym livie ~30 s, więc stały sleep dawałby kadencję dwa
