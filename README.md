@@ -17,8 +17,11 @@ Wyzwalacz to RUCH, nie stan. Liczony między dwoma pomiarami tego samego rynku:
 3. **Ruch kursu** – implikowana szansa przesunęła się o co najmniej `SPIKE_PROB_MOVE`
    (domyślnie 0.05, czyli 5 punktów procentowych).
 
-Gramy **tylko stronę Over** (`SIDES=over`, domyślnie; dozwolone też `under` i `both`).
-Detektor jest symetryczny – to wybór świadomy, nie ograniczenie techniczne.
+`SIDES` wybiera, które **napływy** bierzemy (`over` domyślnie, też `under` i `both`).
+`STRATEGY` wybiera, co z nimi robimy: `follow` obstawia stronę, na którą weszła kasa,
+`fade` stronę przeciwną. Przy `fade` alert sam odwraca cztery rzeczy naraz – obstawianą
+stronę, jej kurs, warunek wygranej i regułę wyjścia – żeby nie trzeba było tego robić
+w głowie w kilkadziesiąt sekund. `MIN_PRICE` dotyczy kursu strony **obstawianej**.
 
 Do tego **kurs po stronie napływu musi wynosić co najmniej `MIN_PRICE`** (domyślnie 1.5).
 Polski podatek od gier to 12% od stawki (`TAX_RATE`), więc realnie wraca `0.88 * kurs`:

@@ -261,3 +261,53 @@ def test_sides_both():
     cfg = Config(sides="both")
     assert evaluate(snap(), cfg, spike()) is not None
     assert evaluate(under_snap(), cfg, under_spike()) is not None
+
+
+# --- fade: gramy przeciw kasie ----------------------------------------------
+
+def fade_cfg(**kw):
+    return Config(strategy="fade", **kw)
+
+
+def test_fade_odwraca_strone_kurs_i_warunek():
+    """Kasa idzie na Over 1.5 po 1.7, wiec fade obstawia Under 1.5 po 2.42."""
+    a = evaluate(snap(), fade_cfg(), spike())
+    assert a is not None
+    assert a.direction == "over", "strona naplywu sie nie zmienia"
+    assert a.bet_side() == "under", "ale obstawiamy przeciwna"
+    assert a.runner_label() == "Under 1.5 Goals"
+    assert a.play_price() == 2.42
+    text = a.format()
+    assert "GRASZ PRZECIW TEJ KASIE" in text
+    assert 'ZAGRAJ TERAZ: BACK (niebieska kolumna) "Under 1.5 Goals" @ 2.42' in text
+    # Warunek wygranej odwrocony: Under 1.5 przy 2 brakujacych golach = max 1 gol.
+    assert "może paść najwyżej 1 gol" in text
+    assert "gol padnie przed 28'" in text, "wyjscie tez odwrocone"
+
+
+def test_fade_opisuje_ruch_strony_naplywu_nie_obstawianej():
+    """Kurs 2.1 -> 1.7 dotyczy Over (naplyw), a nie obstawianego Under - inaczej klamie."""
+    text = evaluate(snap(), fade_cfg(), spike()).format()
+    assert "Kurs Over 1.5 Goals: 2.1 -> 1.7" in text
+    assert "Kurs Under 1.5 Goals: 2.1" not in text
+
+
+def test_fade_prog_kursu_dotyczy_strony_obstawianej():
+    """Kasa na Over po 1.7, ale Under po 1.3 - fade nie ma sensu po podatku."""
+    assert evaluate(snap(under_price=1.3), fade_cfg(), spike()) is None
+    # A gdy to Over jest drogie, follow odpada, fade przechodzi.
+    assert evaluate(snap(over_price=1.3, under_price=3.6), Config(), spike()) is None
+
+
+def test_fade_na_naplywie_na_under_obstawia_over():
+    a = evaluate(under_snap(), fade_cfg(sides="under"), under_spike())
+    assert a.direction == "under" and a.bet_side() == "over"
+    assert a.runner_label() == "Over 2.5 Goals" and a.play_price() == 2.6
+    assert "muszą paść 3 gole" in a.format()
+
+
+def test_follow_bez_zmian():
+    """Domyslna strategia musi dzialac dokladnie jak wczesniej."""
+    a = evaluate(snap(), Config(), spike())
+    assert a.bet_side() == "over" and a.play_price() == 1.7
+    assert "ktoś coś wie" in a.format()

@@ -166,3 +166,11 @@ def test_startup_line_keeps_its_punctuation(capsys, monkeypatch):
     linia = (f"(źródło: betsapi, skan co 45 s, tylko Over, "
              f"napływ od {money(cfg.spike_min_money)}, kurs od {cfg.min_price:g})")
     assert "betsapi, skan co 45 s, tylko Over, napływ od 10 000, kurs od 1.5" in linia
+
+
+def test_zla_strategia_wraca_do_follow(monkeypatch, capsys):
+    monkeypatch.setenv("STRATEGY", "fejd")
+    assert main.load_strategy() == "follow"
+    assert "nieznane" in capsys.readouterr().out
+    monkeypatch.setenv("STRATEGY", "FADE")
+    assert main.load_strategy() == "fade"

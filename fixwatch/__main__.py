@@ -40,6 +40,17 @@ def env_float(name, default):
 
 
 VALID_SIDES = ("over", "under", "both")
+VALID_STRATEGIES = ("follow", "fade")
+
+
+def load_strategy():
+    """follow = gramy z kasa, fade = przeciw niej. Literowka nie moze cicho odwrocic gry."""
+    value = (os.getenv("STRATEGY") or "follow").strip().lower()
+    if value not in VALID_STRATEGIES:
+        print(f"[WARN] STRATEGY={value!r} nieznane (dozwolone: "
+              f"{', '.join(VALID_STRATEGIES)}) – zostaję przy 'follow'")
+        return "follow"
+    return value
 
 
 def load_sides():
@@ -56,6 +67,7 @@ def load_config():
     extra = [c.strip() for c in os.getenv("EXCLUDED_COMPETITIONS", "").split(",") if c.strip()]
     return Config(
         sides=load_sides(),
+        strategy=load_strategy(),
         spike_min_money=env_float("SPIKE_MIN_MONEY", 10000),
         spike_ratio=env_float("SPIKE_RATIO", 0.3),
         spike_prob_move=env_float("SPIKE_PROB_MOVE", 0.05),
@@ -216,11 +228,13 @@ def main():
     history = History(window=env_float("SPIKE_WINDOW", 180))
     research = ResearchLog()
     alerted = {}
-    strony = {"over": "tylko Over", "under": "tylko Under", "both": "Over i Under"}
+    strony = {"over": "napływy na Over", "under": "napływy na Under",
+              "both": "napływy w obie strony"}
+    jak = {"follow": "gram Z kasą", "fade": "gram PRZECIW kasie"}
     # Kwotę formatuje money(), a nie replace(",", " ") na całym zdaniu – inaczej
     # separator tysięcy zabiera ze sobą przecinki interpunkcyjne.
     print(f"[INFO] Startuję skaner nagłych napływów (źródło: {source}, "
-          f"skan co {interval} s, {strony[cfg.sides]}, "
+          f"skan co {interval} s, {strony[cfg.sides]}, {jak[cfg.strategy]}, "
           f"napływ od {money(cfg.spike_min_money)}, kurs od {cfg.min_price:g}). "
           f"Pierwszy skan tylko zapamiętuje stan rynków.")
     if research.enabled():

@@ -88,9 +88,13 @@ class Config:
     # netto 1.14, czyli +14% z wygranej, a przy 1.14 jest sie dokladnie na zero).
     min_price: float = 1.5
     tax_rate: float = DEFAULT_TAX_RATE
-    # Ktore strony gramy: "over", "under" albo "both". Detektor jest symetryczny, to
-    # jest wybor Felixa - trzymanie Under przy 0-0 to inna gra niz czekanie na gole.
+    # Ktore NAPLYWY bierzemy pod uwage: "over", "under" albo "both".
     sides: str = "over"
+    # Co robimy z naplywem: "follow" gra po stronie kasy, "fade" przeciw niej.
+    # Pierwszy pomiar (43 typy z 24 meczow) dal follow ROI -41%, fade +19% - ale z
+    # przedzialem [-12%, +54%], wiec to trop, nie pewnik. Przelacznik istnieje, zeby
+    # nie trzeba bylo odwracac strony, warunku i wyjscia w glowie.
+    strategy: str = "follow"
     # --- kontekst w tresci alertu ---
     rate_ratio_high: float = 1.7        # rynek wycenia >= 1.7x normalne tempo goli
     rate_ratio_low: float = 0.6         # albo <= 0.6x
@@ -113,21 +117,33 @@ class Alert:
     remaining: int | None = None        # minut do końca okresu (z doliczonym)
     tax_rate: float = DEFAULT_TAX_RATE  # do przeliczenia kursu na netto
     min_price: float = 1.5              # najnizszy kurs, ktory ma sens po podatku
+    strategy: str = "follow"            # "follow" gra z kasa, "fade" przeciw niej
 
     def fair_over_price(self):
         if self.model_over_prob:
             return 1 / self.model_over_prob
         return None
 
+    def bet_side(self):
+        """Strona, którą OBSTAWIAMY – przy fade przeciwna do tej, na którą idzie kasa."""
+        if self.strategy == "fade":
+            return "under" if self.direction == "over" else "over"
+        return self.direction
+
     def runner_label(self):
-        """Nazwa zakładu z kuponu Betfair, np. "Over 4.5 Goals"."""
+        """Nazwa obstawianego zakładu z kuponu Betfair, np. "Over 4.5 Goals"."""
+        side = "Over" if self.bet_side() == "over" else "Under"
+        return f"{side} {self.snapshot.line:g} Goals"
+
+    def flow_label(self):
+        """Nazwa zakładu po stronie NAPŁYWU – to jego kurs się ruszył."""
         side = "Over" if self.direction == "over" else "Under"
         return f"{side} {self.snapshot.line:g} Goals"
 
     def play_price(self):
-        """Kurs po stronie, na którą idzie kasa."""
+        """Kurs po stronie, którą obstawiamy."""
         s = self.snapshot
-        return s.over_price if self.direction == "over" else s.under_price
+        return s.over_price if self.bet_side() == "over" else s.under_price
 
     def exit_minute(self):
         """Do której minuty trzymamy pozycję, jeśli nic się nie dzieje."""
@@ -145,7 +161,7 @@ class Alert:
                f"   Rynek: {s.market_name} – ten mecz, ten rynek, nie inny"]
         if self.goals_needed is not None and self.remaining is not None:
             koniec = "do przerwy" if s.first_half else "do końca meczu"
-            if self.direction == "over":
+            if self.bet_side() == "over":
                 warunek = must_fall(self.goals_needed)
             elif self.goals_needed == 1:
                 warunek = "nie może paść ANI JEDEN gol"
@@ -164,7 +180,7 @@ class Alert:
         out.append(f"   Nie bierz kursu poniżej {floor:.2f} – {powod}, odpuść")
         exit_min = self.exit_minute()
         if exit_min is not None:
-            warunek = (f"do {exit_min}' nie padnie gol" if self.direction == "over"
+            warunek = (f"do {exit_min}' nie padnie gol" if self.bet_side() == "over"
                        else f"gol padnie przed {exit_min}'")
             out.append(f"   Wyjście: jeśli {warunek} – zamknij (LAY \"{label}\") "
                        f"i ratuj część stawki")
@@ -178,7 +194,7 @@ class Alert:
         return [
             f"CO SIĘ WŁAŚNIE STAŁO: w {d.span:.0f} s wpadło {money(d.money_in)} "
             f"({d.inflow_ratio:.0%} obrotu, jaki rynek miał wcześniej)",
-            f"   Kurs {self.runner_label()}: {d.price_before:g} -> {d.price_now:g} "
+            f"   Kurs {self.flow_label()}: {d.price_before:g} -> {d.price_now:g} "
             f"(szansa Over {d.prob_before:.0%} -> {d.prob_now:.0%})",
             f"   Tempo napływu: {money(d.money_per_minute)} na minutę",
         ]
@@ -186,7 +202,10 @@ class Alert:
     def format(self):
         s = self.snapshot
         strona = "OVER" if self.direction == "over" else "UNDER"
-        lines = [f"🚨 NAGŁY NAPŁYW KASY na {strona} – ktoś coś wie"]
+        if self.strategy == "fade":
+            lines = [f"🚨 NAGŁY NAPŁYW KASY na {strona} – GRASZ PRZECIW TEJ KASIE"]
+        else:
+            lines = [f"🚨 NAGŁY NAPŁYW KASY na {strona} – ktoś coś wie"]
         lines.append(f"{s.competition}: {s.event_name}")
 
         state = []
@@ -209,9 +228,14 @@ class Alert:
         lines.append(" | ".join(kontekst))
         if self.reasons:
             lines.append("Dodatkowo: " + "; ".join(self.reasons))
-        lines.append("⚠️ Kurs leci w dół – licz się z tym, że zanim klikniesz, będzie "
-                     "gorszy niż podany. Przy udowodnionym ustawieniu Betfair może "
-                     "unieważnić rynek.")
+        if self.strategy == "fade":
+            lines.append("⚠️ Grasz PRZECIW kasie, która właśnie weszła – zakładasz, że rynek "
+                         "przereagował. Twój kurs rośnie, więc pośpiech szkodzi mniej, ale "
+                         "sprawdź, ile da się na nim obstawić.")
+        else:
+            lines.append("⚠️ Kurs leci w dół – licz się z tym, że zanim klikniesz, będzie "
+                         "gorszy niż podany. Przy udowodnionym ustawieniu Betfair może "
+                         "unieważnić rynek.")
         if s.url:
             lines.append(s.url)
         return "\n".join(lines)
@@ -249,7 +273,10 @@ def evaluate(s: MarketSnapshot, cfg: Config, delta=None) -> Alert | None:
 
     # Kurs po stronie napływu musi się opłacać po podatku od stawki. Przy 1.20 netto
     # wychodzi 1.06, czyli +6% z wygranej – nie ma o co grać, więc nie zawracamy głowy.
-    play_price = s.over_price if delta.side == "over" else s.under_price
+    bet_side = delta.side
+    if cfg.strategy == "fade":
+        bet_side = "under" if delta.side == "over" else "over"
+    play_price = s.over_price if bet_side == "over" else s.under_price
     if play_price < cfg.min_price:
         return None
 
@@ -257,7 +284,8 @@ def evaluate(s: MarketSnapshot, cfg: Config, delta=None) -> Alert | None:
     reasons = []
     alert = Alert(snapshot=s, reasons=reasons, score=0.0, delta=delta,
                   direction=delta.side, market_over_prob=p_over,
-                  tax_rate=cfg.tax_rate, min_price=cfg.min_price)
+                  tax_rate=cfg.tax_rate, min_price=cfg.min_price,
+                  strategy=cfg.strategy)
 
     # --- kontekst z wyniku i minuty ---------------------------------------
     if s.minute is not None and s.home_goals is not None:
