@@ -17,6 +17,9 @@ Wyzwalacz to RUCH, nie stan. Liczony między dwoma pomiarami tego samego rynku:
 3. **Ruch kursu** – implikowana szansa przesunęła się o co najmniej `SPIKE_PROB_MOVE`
    (domyślnie 0.05, czyli 5 punktów procentowych).
 
+Gramy **tylko stronę Over** (`SIDES=over`, domyślnie; dozwolone też `under` i `both`).
+Detektor jest symetryczny – to wybór świadomy, nie ograniczenie techniczne.
+
 Do tego **kurs po stronie napływu musi wynosić co najmniej `MIN_PRICE`** (domyślnie 1.5).
 Polski podatek od gier to 12% od stawki (`TAX_RATE`), więc realnie wraca `0.88 * kurs`:
 kurs 1.20 to netto 1.06 (+6% z wygranej), a przy 1.14 jest się dokładnie na zero nawet
@@ -45,6 +48,18 @@ Filtry kontekstowe: nie alarmujemy, gdy Over już wszedł, gdy do końca okresu 
 niż 15 minut (gole nie zdążą paść) ani gdy kurs jest krótszy niż `MIN_PRICE`. Po alercie na danym rynku milczymy `ALERT_COOLDOWN`
 sekund (domyślnie 300) – ten sam napływ siedzi jeszcze w oknie historii, więc bez tego jedno
 zdarzenie poszłoby kilka razy.
+
+### Czego ten bot NIE udowodnił
+Pierwszy backtest (19.10.2026, 43 typy rozstrzygnięte na faktycznych wynikach, stawka 1 j.,
+podatek 12%) wyszedł **ujemnie: weszło 40%, ale P&L −17.68 j., ROI −41%**. Co gorsza im
+większy napływ, tym gorzej: przy napływie ≥9000 trafność spadła do 25%, a przy napływie
+≥9000 i kursie ≥1.50 było **0 na 5**. Wielka kasa szła na Under przy 0-0, a mecze kończyły
+się 2-3 i 3-4. Rozbicie per strona: Over ROI −48%, Under −38%.
+
+To podważa założenie, na którym bot stoi. 43 typy z jednego dnia to za mało na wyrok, ale
+za dużo, żeby je zignorować – **nie graj z tych alertów realnymi pieniędzmi, dopóki nie ma
+kilkutygodniowej próbki**. Progi `SPIKE_*`, `MIN_PRICE` i reguła wyjścia to nadal wartości
+przyjęte z sensu, a nie skalibrowane na danych.
 
 Historia rynków jest **w pamięci procesu**: po restarcie usługi pierwszy skan tylko zapamiętuje
 stan i nie wygeneruje sygnału, bo nie ma z czym porównać.

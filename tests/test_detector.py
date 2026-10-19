@@ -89,6 +89,11 @@ def under_snap(**kw):
     return snap(**base)
 
 
+def under_cfg(**kw):
+    """Config dla testow mechaniki Under - domyslnie gramy tylko Over."""
+    return Config(sides="under", **kw)
+
+
 def under_spike(**kw):
     base = dict(prob_before=0.50, prob_now=0.38, price_before=1.90, price_now=1.60)
     base.update(kw)
@@ -96,7 +101,7 @@ def under_spike(**kw):
 
 
 def test_direction_follows_the_price_move():
-    alert = evaluate(under_snap(), Config(), under_spike())
+    alert = evaluate(under_snap(), under_cfg(), under_spike())
     assert alert.direction == "under"
     assert alert.runner_label() == "Under 2.5 Goals"
     assert alert.play_price() == 1.6
@@ -147,7 +152,7 @@ def test_format_has_concrete_play_and_movement():
 
 
 def test_under_format_flips_the_condition():
-    text = evaluate(under_snap(), Config(), under_spike()).format()
+    text = evaluate(under_snap(), under_cfg(), under_spike()).format()
     assert "na UNDER" in text
     assert "może paść najwyżej 2 gole" in text
     assert "gol padnie przed" in text
@@ -157,13 +162,13 @@ def test_under_format_flips_the_condition():
 
 def test_short_price_is_not_worth_playing():
     """Kurs 1.30 to netto 1.14 - podatek zjada marze, wiec nie zawracamy glowy."""
-    assert evaluate(under_snap(under_price=1.3), Config(),
+    assert evaluate(under_snap(under_price=1.3), under_cfg(),
                     under_spike(price_now=1.30)) is None
     assert evaluate(snap(over_price=1.2), Config(), spike(price_now=1.20)) is None
 
 
 def test_min_price_boundary_passes():
-    alert = evaluate(under_snap(under_price=1.5), Config(), under_spike(price_now=1.50))
+    alert = evaluate(under_snap(under_price=1.5), under_cfg(), under_spike(price_now=1.50))
     assert alert is not None and alert.play_price() == 1.5
 
 
@@ -181,7 +186,7 @@ def test_net_price_after_tax_is_shown():
 
 def test_floor_never_goes_under_min_price():
     """Przy kursie 1.55 ulamek zysku dalby 1.44, czyli kurs, ktorego i tak nie zagramy."""
-    alert = evaluate(under_snap(under_price=1.55), Config(), under_spike(price_now=1.55))
+    alert = evaluate(under_snap(under_price=1.55), under_cfg(), under_spike(price_now=1.55))
     floor = [ln for ln in alert.format().split("\n") if "Nie bierz kursu" in ln][0]
     assert "1.50" in floor
     assert "podatek zjada opłacalność" in floor
@@ -234,3 +239,25 @@ def test_discord_message(monkeypatch):
     monkeypatch.setattr(notify.requests, "post", fake_post)
     assert notify.send_discord("🚨 A v B\nhttps://www.betfair.com/x")
     assert sent["body"]["content"] == "🚨 A v B\n<https://www.betfair.com/x>"
+
+
+# --- ktore strony gramy -----------------------------------------------------
+
+def test_only_over_by_default():
+    """Domyslnie gramy tylko Over - wybor Felixa, nie wlasciwosc detektora."""
+    assert Config().sides == "over"
+    assert evaluate(snap(), Config(), spike()) is not None
+    # Ten sam naply na Under, domyslnym configiem - nie przechodzi.
+    assert evaluate(under_snap(), Config(), under_spike()) is None
+
+
+def test_sides_under_only():
+    cfg = Config(sides="under")
+    assert evaluate(under_snap(), cfg, under_spike()) is not None
+    assert evaluate(snap(), cfg, spike()) is None
+
+
+def test_sides_both():
+    cfg = Config(sides="both")
+    assert evaluate(snap(), cfg, spike()) is not None
+    assert evaluate(under_snap(), cfg, under_spike()) is not None

@@ -38,9 +38,23 @@ def env_float(name, default):
     return float(value) if value else default
 
 
+VALID_SIDES = ("over", "under", "both")
+
+
+def load_sides():
+    """Które strony gramy. Literówka w .env nie może po cichu wyłączyć całego bota."""
+    value = (os.getenv("SIDES") or "over").strip().lower()
+    if value not in VALID_SIDES:
+        print(f"[WARN] SIDES={value!r} nieznane (dozwolone: {', '.join(VALID_SIDES)}) "
+              f"– zostaję przy 'over'")
+        return "over"
+    return value
+
+
 def load_config():
     extra = [c.strip() for c in os.getenv("EXCLUDED_COMPETITIONS", "").split(",") if c.strip()]
     return Config(
+        sides=load_sides(),
         spike_min_money=env_float("SPIKE_MIN_MONEY", 10000),
         spike_ratio=env_float("SPIKE_RATIO", 0.3),
         spike_prob_move=env_float("SPIKE_PROB_MOVE", 0.05),
@@ -194,8 +208,11 @@ def main():
     cooldown = env_float("ALERT_COOLDOWN", DEFAULT_COOLDOWN)
     history = History(window=env_float("SPIKE_WINDOW", 180))
     alerted = {}
+    strony = {"over": "tylko Over", "under": "tylko Under", "both": "Over i Under"}
     print(f"[INFO] Startuję skaner nagłych napływów (źródło: {source}, "
-          f"skan co {interval} s). Pierwszy skan tylko zapamiętuje stan rynków.")
+          f"skan co {interval} s, {strony[cfg.sides]}, napływ od "
+          f"{cfg.spike_min_money:,.0f}".replace(",", " ") +
+          f", kurs od {cfg.min_price:g}). Pierwszy skan tylko zapamiętuje stan rynków.")
     while True:
         started = time.monotonic()
         try:

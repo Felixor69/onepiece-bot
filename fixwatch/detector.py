@@ -85,6 +85,9 @@ class Config:
     # netto 1.14, czyli +14% z wygranej, a przy 1.14 jest sie dokladnie na zero).
     min_price: float = 1.5
     tax_rate: float = DEFAULT_TAX_RATE
+    # Ktore strony gramy: "over", "under" albo "both". Detektor jest symetryczny, to
+    # jest wybor Felixa - trzymanie Under przy 0-0 to inna gra niz czekanie na gole.
+    sides: str = "over"
     # --- kontekst w tresci alertu ---
     rate_ratio_high: float = 1.7        # rynek wycenia >= 1.7x normalne tempo goli
     rate_ratio_low: float = 0.6         # albo <= 0.6x
@@ -235,6 +238,10 @@ def evaluate(s: MarketSnapshot, cfg: Config, delta=None) -> Alert | None:
     if delta.inflow_ratio < cfg.spike_ratio:
         return None
     if abs(delta.prob_move) < cfg.spike_prob_move:
+        return None
+
+    # Gramy tylko wybrane strony rynku.
+    if cfg.sides != "both" and delta.side != cfg.sides:
         return None
 
     # Kurs po stronie napływu musi się opłacać po podatku od stawki. Przy 1.20 netto

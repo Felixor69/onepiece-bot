@@ -134,3 +134,25 @@ def test_eligible_league_does_reach_the_calibration_log(capsys):
     main.scan(feed(1.90, 2.10, 23000), Config(), alerted, history, now=90)
     out = capsys.readouterr().out
     assert "Największy napływ w oknie: 4 338" in out
+
+
+def test_under_spike_is_not_sent_by_default(monkeypatch):
+    """Naply na Under przy domyslnych ustawieniach nie moze iso na Discorda."""
+    sent = []
+    monkeypatch.setattr(main, "notify", lambda a: sent.append(a))
+    history, alerted = History(), {}
+    # Kurs Under zjezdza (kasa na Under), kwota i skala z zapasem nad progami.
+    main.scan(feed(1.60, 2.60, 20000), Config(), alerted, history, now=0)
+    main.scan(feed(2.60, 1.60, 45000), Config(), alerted, history, now=90)
+    assert sent == []
+    main.scan(feed(1.60, 2.60, 20000), Config(sides="both"), alerted, History(), now=0)
+    main.scan(feed(2.60, 1.60, 45000), Config(sides="both"), alerted, history, now=90)
+    assert [a.direction for a in sent] == ["under"], "z sides=both ten sam naply przechodzi"
+
+
+def test_bad_sides_value_falls_back_to_over(monkeypatch, capsys):
+    monkeypatch.setenv("SIDES", "ower")
+    assert main.load_sides() == "over"
+    assert "nieznane" in capsys.readouterr().out
+    monkeypatch.setenv("SIDES", "BOTH")
+    assert main.load_sides() == "both"
