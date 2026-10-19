@@ -146,16 +146,16 @@ def test_format_has_concrete_play_and_movement():
     assert "NAGŁY NAPŁYW KASY na OVER" in text
     assert 'ZAGRAJ TERAZ: BACK (niebieska kolumna) "Over 1.5 Goals" @ 1.7' in text
     assert "muszą paść 2 gole" in text
-    assert "Wyjście: jeśli do 28' nie padnie gol" in text
     assert "w 118 s wpadło 12 400 (66% obrotu, jaki rynek miał wcześniej)" in text
     assert "Kurs Over 1.5 Goals: 2.1 -> 1.7 (szansa Over 48% -> 59%)" in text
+    assert "Trzymasz do przerwy – nie zamykaj przed czasem" in text
 
 
 def test_under_format_flips_the_condition():
     text = evaluate(under_snap(), under_cfg(), under_spike()).format()
     assert "na UNDER" in text
     assert "może paść najwyżej 2 gole" in text
-    assert "gol padnie przed" in text
+    assert "Trzymasz do końca meczu" in text
 
 
 # --- oplacalnosc po podatku -------------------------------------------------
@@ -282,7 +282,6 @@ def test_fade_odwraca_strone_kurs_i_warunek():
     assert 'ZAGRAJ TERAZ: BACK (niebieska kolumna) "Under 1.5 Goals" @ 2.42' in text
     # Warunek wygranej odwrocony: Under 1.5 przy 2 brakujacych golach = max 1 gol.
     assert "może paść najwyżej 1 gol" in text
-    assert "gol padnie przed 28'" in text, "wyjscie tez odwrocone"
 
 
 def test_fade_opisuje_ruch_strony_naplywu_nie_obstawianej():
@@ -311,3 +310,31 @@ def test_follow_bez_zmian():
     a = evaluate(snap(), Config(), spike())
     assert a.bet_side() == "over" and a.play_price() == 1.7
     assert "ktoś coś wie" in a.format()
+
+
+# --- regula wyjscia: domyslnie niewypisywana --------------------------------
+
+def test_wyjscia_domyslnie_nie_pokazujemy():
+    """Nie zmierzylismy jej, a stosowanie zmienia strategie - wiec nie podpowiadamy."""
+    assert Config().show_exit is False
+    text = evaluate(snap(), Config(), spike()).format()
+    assert "Wyjście" not in text
+    assert "Trzymasz do przerwy – nie zamykaj przed czasem" in text
+
+
+def test_wyjscie_wraca_na_zyczenie():
+    text = evaluate(snap(), Config(show_exit=True), spike()).format()
+    assert "Wyjście: jeśli do 28' nie padnie gol" in text
+    assert "Trzymasz do" not in text
+
+
+def test_wyjscie_odwraca_sie_przy_fade():
+    text = evaluate(snap(), fade_cfg(show_exit=True), spike()).format()
+    assert "Wyjście: jeśli gol padnie przed 28'" in text
+
+
+def test_exit_minute_zostaje_do_analizy():
+    """Logika musi zostac w kodzie, bo rozliczanie bedzie liczyc, czy regula pomagala."""
+    a = evaluate(snap(), Config(), spike())
+    assert a.show_exit is False
+    assert a.exit_minute() == 28

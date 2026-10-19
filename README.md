@@ -43,9 +43,15 @@ goli"). Nie jest wyzwalaczem i nie służy do grania przeciw rynkowi: to goły P
 rozjeździe z rynkiem częściej myli się model.
 
 ### Co jest w alercie
-Gotowe zagranie, nie liczby: nazwa zakładu z kuponu Betfair, kurs, co musi się stać, najniższy
-kurs jaki warto jeszcze wziąć, minuta zamknięcia pozycji, a pod tym „CO SIĘ WŁAŚNIE STAŁO" –
+Gotowe zagranie, nie liczby: nazwa zakładu z kuponu Betfair, kurs, co musi się stać, kurs
+netto po podatku, najniższy kurs jaki warto jeszcze wziąć, a pod tym „CO SIĘ WŁAŚNIE STAŁO" –
 ile kasy wpadło, w ile sekund i z jakiego kursu na jaki zjechało.
+
+Reguły wyjścia alert **nie** podaje (`SHOW_EXIT=1` ją przywraca). Nigdy jej nie zmierzyliśmy,
+a zamykanie pozycji zmienia strategię na inną niż ta, dla której mamy jakikolwiek wynik –
+backtest rozlicza zakłady trzymaniem do końca okresu. Zamiast niej alert mówi wprost, żeby
+trzymać. `exit_minute()` zostaje w kodzie, bo rozliczanie ma policzyć, czy ta reguła w ogóle
+pomagała.
 
 Filtry kontekstowe: nie alarmujemy, gdy Over już wszedł, gdy do końca okresu zostało mniej
 niż 15 minut (gole nie zdążą paść) ani gdy kurs jest krótszy niż `MIN_PRICE`. Po alercie na danym rynku milczymy `ALERT_COOLDOWN`

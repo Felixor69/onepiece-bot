@@ -39,6 +39,13 @@ def env_float(name, default):
     return float(value) if value else default
 
 
+def env_flag(name, default=False):
+    value = (os.getenv(name) or "").strip().lower()
+    if not value:
+        return default
+    return value in ("1", "true", "tak", "yes", "on")
+
+
 VALID_SIDES = ("over", "under", "both")
 VALID_STRATEGIES = ("follow", "fade")
 
@@ -68,6 +75,7 @@ def load_config():
     return Config(
         sides=load_sides(),
         strategy=load_strategy(),
+        show_exit=env_flag("SHOW_EXIT", False),
         spike_min_money=env_float("SPIKE_MIN_MONEY", 10000),
         spike_ratio=env_float("SPIKE_RATIO", 0.3),
         spike_prob_move=env_float("SPIKE_PROB_MOVE", 0.05),

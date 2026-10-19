@@ -95,6 +95,10 @@ class Config:
     # przedzialem [-12%, +54%], wiec to trop, nie pewnik. Przelacznik istnieje, zeby
     # nie trzeba bylo odwracac strony, warunku i wyjscia w glowie.
     strategy: str = "follow"
+    # Czy pokazywac regule wyjscia. Domyslnie NIE: nigdy jej nie zmierzylismy, a stosowanie
+    # jej zmienia strategie na inna niz ta, dla ktorej mamy jakikolwiek wynik (zaklady
+    # rozliczamy trzymaniem do konca okresu). exit_minute() zostaje do analizy offline.
+    show_exit: bool = False
     # --- kontekst w tresci alertu ---
     rate_ratio_high: float = 1.7        # rynek wycenia >= 1.7x normalne tempo goli
     rate_ratio_low: float = 0.6         # albo <= 0.6x
@@ -118,6 +122,7 @@ class Alert:
     tax_rate: float = DEFAULT_TAX_RATE  # do przeliczenia kursu na netto
     min_price: float = 1.5              # najnizszy kurs, ktory ma sens po podatku
     strategy: str = "follow"            # "follow" gra z kasa, "fade" przeciw niej
+    show_exit: bool = False             # czy wypisywac regule wyjscia
 
     def fair_over_price(self):
         if self.model_over_prob:
@@ -179,7 +184,11 @@ class Alert:
                  else f"niżej zostaje mniej niż {PROFIT_FLOOR_FRACTION:.0%} pierwotnego zysku")
         out.append(f"   Nie bierz kursu poniżej {floor:.2f} – {powod}, odpuść")
         exit_min = self.exit_minute()
-        if exit_min is not None:
+        if not self.show_exit:
+            koniec = "przerwy" if s.first_half else "końca meczu"
+            out.append(f"   Trzymasz do {koniec} – nie zamykaj przed czasem "
+                       f"(zamykanie nie jest zmierzone)")
+        elif exit_min is not None:
             warunek = (f"do {exit_min}' nie padnie gol" if self.bet_side() == "over"
                        else f"gol padnie przed {exit_min}'")
             out.append(f"   Wyjście: jeśli {warunek} – zamknij (LAY \"{label}\") "
@@ -285,7 +294,7 @@ def evaluate(s: MarketSnapshot, cfg: Config, delta=None) -> Alert | None:
     alert = Alert(snapshot=s, reasons=reasons, score=0.0, delta=delta,
                   direction=delta.side, market_over_prob=p_over,
                   tax_rate=cfg.tax_rate, min_price=cfg.min_price,
-                  strategy=cfg.strategy)
+                  strategy=cfg.strategy, show_exit=cfg.show_exit)
 
     # --- kontekst z wyniku i minuty ---------------------------------------
     if s.minute is not None and s.home_goals is not None:
