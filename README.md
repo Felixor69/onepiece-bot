@@ -15,6 +15,22 @@ dla trwających meczów i alarmuje, gdy:
 Alert = (2) oraz (1) lub (3). Przykład ze screena (Panama, 0-0 w 9', Over 1.5 FH po 1.70):
 rynek 59%, model 26% (fair ~3.85), obrót 31k.
 
+### Co jest w alercie
+Alert podaje gotowe zagranie, a nie same liczby: nazwę zakładu z kuponu Betfair, kurs,
+co musi się stać, żeby wszedł, najniższy kurs jaki warto jeszcze wziąć i minutę, po
+której pozycję zamykamy.
+
+**Strategia: jedziemy Z podejrzanymi pieniędzmi.** Obstawiamy (BACK) tę stronę, którą
+kupuje rynek – założenie jest takie, że ktoś zna wynik. Sygnał (1) mówi, która to strona:
+tempo wyższe niż normalne = kasa na Over, niższe = kasa na Under. Gdy znamy tylko obrót
+(brak wyniku/minuty), alert nie podaje strony i każe ją najpierw sprawdzić na rynku.
+
+Świadomie **nie** grywamy przeciw rynkowi na podstawie modelu: to goły Poisson ze stałym
+`GOALS_PER_90`, bez siły drużyn, kartek i tego, że przegrywający pod koniec się odkrywa.
+Gdy model i rynek się nie zgadzają, to częściej model się myli – dlatego `fair` jest w
+alercie tylko jako ostrzeżenie, nie jako przewaga. Betfair może też unieważnić rynek,
+jeśli ustawienie meczu zostanie udowodnione.
+
 Na serwer (Contabo) jako usługa 24/7, alerty na Discord. Jako root na serwerze:
 ```
 bash <(curl -fsSL https://raw.githubusercontent.com/Felixor69/onepiece-bot/claude/busy-ptolemy-anm020/deploy/install.sh)

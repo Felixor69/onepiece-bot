@@ -99,3 +99,69 @@ def test_discord_message(monkeypatch):
     monkeypatch.setattr(notify.requests, "post", fake_post)
     assert notify.send_discord("🚨 A v B\nhttps://www.betfair.com/x")
     assert sent["body"]["content"] == "🚨 A v B\n<https://www.betfair.com/x>"
+
+
+# --- zagranie w alercie -----------------------------------------------------
+
+def test_direction_over_gives_back_over():
+    alert = evaluate(snap(), Config())
+    assert alert.direction == "over"
+    assert alert.runner_label() == "Over 1.5 Goals"
+    assert alert.play_price() == 1.7
+    assert alert.goals_needed == 2 and alert.remaining == 38
+
+
+def test_direction_under_gives_back_under():
+    s = snap(market_name="Over/Under 2.5 Goals", line=2.5, first_half=False, minute=0,
+             over_price=6.0, under_price=1.2)
+    alert = evaluate(s, Config())
+    assert alert.direction == "under"
+    assert alert.runner_label() == "Under 2.5 Goals"
+    assert alert.play_price() == 1.2
+
+
+def test_no_direction_without_rate_signal():
+    alert = evaluate(snap(home_goals=None, away_goals=None), Config())
+    assert alert.direction is None
+    assert alert.runner_label() is None and alert.play_price() is None
+    assert "NIE GRAJ NA ŚLEPO" in alert.format()
+
+
+def test_price_floor_never_below_one():
+    # Przy krótkim kursie ułamek samego kursu dałby próg < 1.0, czego na giełdzie nie ma.
+    s = snap(market_name="Over/Under 2.5 Goals", line=2.5, first_half=False, minute=0,
+             over_price=6.0, under_price=1.2)
+    alert = evaluate(s, Config())
+    floor = [line for line in alert.format().split("\n") if "Nie bierz kursu" in line][0]
+    assert "1.16" in floor
+    assert all(float(w) > 1.0 for w in floor.split() if w.replace(".", "").isdigit())
+
+
+def test_exit_minute_stays_in_period():
+    alert = evaluate(snap(), Config())          # 1. połowa, 9'
+    assert alert.exit_minute() == 28 <= 45
+
+
+def test_format_has_concrete_play():
+    text = evaluate(snap(), Config()).format()
+    assert 'ZAGRAJ: BACK (niebieska kolumna) "Over 1.5 Goals" @ 1.7' in text
+    assert "muszą paść 2 gole" in text
+    assert "Wyjście: jeśli do 28' nie padnie gol" in text
+    assert "Jedziesz Z PIENIĘDZMI" in text
+
+
+def test_goals_word_and_must_fall():
+    from fixwatch.detector import goals_word, must_fall
+    assert [goals_word(n) for n in (1, 2, 4, 5)] == ["1 gol", "2 gole", "4 gole", "5 goli"]
+    assert must_fall(1) == "musi paść 1 gol"
+    assert must_fall(3) == "muszą paść 3 gole"
+
+
+def test_money_uses_spaces():
+    from fixwatch.detector import money
+    assert money(31062) == "31 062"
+    # Przecinek po kursie musi zostac przecinkiem, a nie zniknac razem z separatorem.
+    assert "1.02, obrót 5 681" in evaluate(
+        snap(market_name="Over/Under 4.5 Goals", line=4.5, first_half=False, minute=78,
+             home_goals=0, away_goals=2, over_price=21, under_price=1.02,
+             total_matched=5681, match_odds_matched=6896), Config()).format()
