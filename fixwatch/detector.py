@@ -1,26 +1,30 @@
-"""Wykrywanie podejrzanych rynków goli (np. ustawiane mecze w egzotycznych ligach).
+"""Wykrywanie nagłego napływu pieniędzy na rynek goli (podejrzenie ustawionego meczu).
 
-Sygnały:
-  1. RATE  – kurs nie pasuje do wyniku i minuty: rynek wycenia tempo goli
-             wielokrotnie wyższe (albo niższe) niż normalny mecz.
-  2. VOLUME – obrót na rynku goli jest duży jak na ligę spoza topu.
-  3. RATIO – rynek goli ma większy obrót niż 1X2 tego meczu (normalnie
-             to 1X2 ma najwięcej pieniędzy).
-Alert leci, gdy jest VOLUME i do tego RATE albo RATIO.
+Sedno: nie szukamy rynków, na których LEŻY dużo pieniędzy – w małych ligach to norma
+i generuje wyłącznie szum. Szukamy momentu, w którym pieniądze NAGLE WPADAJĄ na jedną
+stronę i kurs po tej stronie zjeżdża. To jest sygnał, że ktoś coś wie, i to jest coś,
+z czego da się zagrać od razu.
 
-Strategia w alercie: jedziemy Z podejrzanymi pieniędzmi, czyli obstawiamy (BACK)
-tę stronę, którą kupuje rynek – nie przeciw niej. Sygnał RATE mówi, która to
-strona: tempo wyższe niż normalne = kasa na Over, niższe = kasa na Under.
+Wyzwalacz (wszystkie trzy warunki, liczone między dwoma pomiarami rynku):
+  1. NAPŁYW  – w oknie wpadło co najmniej `spike_min_money`,
+  2. SKALA   – ten napływ to co najmniej `spike_ratio` tego, co na rynku leżało wcześniej,
+  3. RUCH    – implikowana szansa przesunęła się o co najmniej `spike_prob_move`.
+
+Kierunek zagrania bierzemy z (3): rośnie P(Over) = kasa idzie na Over. To obserwacja
+rynku, nie wniosek z modelu – dlatego kierunek znamy zawsze, także gdy BetsAPI nie poda
+wyniku i minuty.
+
+Model Poissona został tu wyłącznie jako KONTEKST w treści alertu („rynek wycenia 2x
+normalne tempo goli"). Nie jest wyzwalaczem i nie służy do grania przeciw rynkowi: to
+goły Poisson bez siły drużyn i kartek, więc przy rozjeździe częściej myli się model.
 """
 from dataclasses import dataclass, field
 
 from . import model
 
 
-# Poniżej tylu minut do końca okresu nie oceniamy kursu (model zbyt niedokładny).
+# Poniżej tylu minut do końca okresu nie ma sensu grać (za mało czasu na gole).
 MIN_REMAINING = 15
-# Po tej minucie niskie tempo goli jest normalne (gra na wynik), więc Under nie alarmuje.
-UNDER_MAX_MINUTE = 60
 # Nie wchodzimy, jeśli kurs spadł tak, że zostało mniej niż tyle z pierwotnego zysku.
 # Liczone od zysku (kurs - 1), nie od samego kursu: przy kursie 1.2 ułamek kursu dałby
 # próg poniżej 1.0, czyli liczbę, której na giełdzie nie ma.
@@ -64,9 +68,13 @@ class MarketSnapshot:
 
 @dataclass
 class Config:
-    min_volume: float = 5000.0          # minimalny obrót na rynku goli
+    # --- wyzwalacz: nagly naplyw ---
+    spike_min_money: float = 2000.0     # ile kasy musi wpasc w oknie
+    spike_ratio: float = 0.3            # ...i ile to ma byc wzgledem obrotu sprzed okna
+    spike_prob_move: float = 0.05       # ...przy przesunieciu szansy o tyle (5 pkt proc.)
+    # --- kontekst w tresci alertu ---
     rate_ratio_high: float = 1.7        # rynek wycenia >= 1.7x normalne tempo goli
-    rate_ratio_low: float = 0.6         # albo <= 0.6x (ustawione "under")
+    rate_ratio_low: float = 0.6         # albo <= 0.6x
     volume_vs_match_odds: float = 2.0   # rynek goli >= 2x obrotu 1X2
     goals_per_90: float = model.DEFAULT_GOALS_PER_90
     excluded_competitions: list[str] = field(default_factory=list)
@@ -77,11 +85,11 @@ class Alert:
     snapshot: MarketSnapshot
     reasons: list[str]
     score: float
+    delta: object = None                # history.Delta – co sie zmienilo w oknie
+    direction: str | None = None        # strona, na ktora idzie kasa
     model_over_prob: float | None = None
     market_over_prob: float | None = None
     rate_ratio: float | None = None
-    # Strona, na którą idzie podejrzana kasa ("over"/"under"); None = nie wiemy.
-    direction: str | None = None
     goals_needed: int | None = None     # ile goli jeszcze musi paść, żeby Over wszedł
     remaining: int | None = None        # minut do końca okresu (z doliczonym)
 
@@ -92,15 +100,11 @@ class Alert:
 
     def runner_label(self):
         """Nazwa zakładu z kuponu Betfair, np. "Over 4.5 Goals"."""
-        if not self.direction:
-            return None
         side = "Over" if self.direction == "over" else "Under"
         return f"{side} {self.snapshot.line:g} Goals"
 
     def play_price(self):
         """Kurs po stronie, na którą idzie kasa."""
-        if not self.direction:
-            return None
         s = self.snapshot
         return s.over_price if self.direction == "over" else s.under_price
 
@@ -112,31 +116,11 @@ class Alert:
         end = 45 if s.first_half else 90
         return min(s.minute + max(self.remaining // 2, 5), end)
 
-    def actionable(self):
-        """Czy jest z tego zakład: znamy stronę, na którą idzie kasa.
-
-        Bez tego alert nie ma po co iść na Discorda – sam obrót nie mówi, co zagrać.
-        """
-        return self.direction is not None
-
-    def no_direction_reason(self):
-        """Dlaczego nie znamy strony – do logu, nie na Discorda."""
-        s = self.snapshot
-        if s.minute is None or s.home_goals is None:
-            return "brak wyniku i minuty z BetsAPI"
-        if self.rate_ratio is None:
-            return "Over już wszedł albo za mało czasu do końca okresu"
-        return (f"kurs jest normalny (tempo {self.rate_ratio:.1f}x normy), "
-                f"zadziałał tylko sygnał z obrotu")
-
     def play_lines(self):
         """Konkret: co kliknąć, co musi się stać i kiedy uciekać."""
         s = self.snapshot
-        if not self.direction:
-            return [f"BEZ ZAGRANIA – {self.no_direction_reason()}"]
-
         label, price = self.runner_label(), self.play_price()
-        out = [f'ZAGRAJ: BACK (niebieska kolumna) "{label}" @ {price:g}',
+        out = [f'ZAGRAJ TERAZ: BACK (niebieska kolumna) "{label}" @ {price:g}',
                f"   Rynek: {s.market_name} – ten mecz, ten rynek, nie inny"]
         if self.goals_needed is not None and self.remaining is not None:
             koniec = "do przerwy" if s.first_half else "do końca meczu"
@@ -158,13 +142,23 @@ class Alert:
                        f"i ratuj część stawki")
         return out
 
+    def movement_lines(self):
+        """Co się właśnie stało na rynku – powód, dla którego to w ogóle leci."""
+        d = self.delta
+        if d is None:
+            return []
+        return [
+            f"CO SIĘ WŁAŚNIE STAŁO: w {d.span:.0f} s wpadło {money(d.money_in)} "
+            f"({d.inflow_ratio:.0%} obrotu, jaki rynek miał wcześniej)",
+            f"   Kurs {self.runner_label()}: {d.price_before:g} -> {d.price_now:g} "
+            f"(szansa Over {d.prob_before:.0%} -> {d.prob_now:.0%})",
+            f"   Tempo napływu: {money(d.money_per_minute)} na minutę",
+        ]
+
     def format(self):
         s = self.snapshot
-        if self.direction:
-            strona = "OVER" if self.direction == "over" else "UNDER"
-            lines = [f"🚨 PODEJRZANY RYNEK – kasa idzie na {strona}"]
-        else:
-            lines = ["🚨 PODEJRZANY RYNEK – duży obrót, kierunek nieznany"]
+        strona = "OVER" if self.direction == "over" else "UNDER"
+        lines = [f"🚨 NAGŁY NAPŁYW KASY na {strona} – ktoś coś wie"]
         lines.append(f"{s.competition}: {s.event_name}")
 
         state = []
@@ -179,23 +173,17 @@ class Alert:
         lines.append("")
         lines += self.play_lines()
         lines.append("")
+        lines += self.movement_lines()
 
-        lines.append(f"Kursy: Over {s.over_price} / Under {s.under_price}, "
-                     f"obrót {money(s.total_matched)}")
-        extra = []
-        if self.rate_ratio is not None:
-            extra.append(f"rynek wycenia {self.rate_ratio:.1f}x normalne tempo goli")
+        kontekst = [f"obrót łącznie {money(s.total_matched)}"]
         if s.match_odds_matched:
-            extra.append(f"obrót 1X2 {money(s.match_odds_matched)}")
-        if extra:
-            lines.append(" | ".join(extra))
-        lines.append("Powody: " + "; ".join(self.reasons))
-        if self.model_over_prob is not None:
-            lines.append(f"⚠️ Jedziesz Z PIENIĘDZMI, nie z modelem (model Over "
-                         f"{self.model_over_prob:.0%} vs rynek Over "
-                         f"{self.market_over_prob:.0%}). Model to goły Poisson – nie zna "
-                         f"siły drużyn ani kartek. Przy udowodnionym ustawieniu Betfair "
-                         f"może unieważnić rynek.")
+            kontekst.append(f"obrót 1X2 {money(s.match_odds_matched)}")
+        lines.append(" | ".join(kontekst))
+        if self.reasons:
+            lines.append("Dodatkowo: " + "; ".join(self.reasons))
+        lines.append("⚠️ Kurs leci w dół – licz się z tym, że zanim klikniesz, będzie "
+                     "gorszy niż podany. Przy udowodnionym ustawieniu Betfair może "
+                     "unieważnić rynek.")
         if s.url:
             lines.append(s.url)
         return "\n".join(lines)
@@ -206,59 +194,61 @@ def is_excluded(competition, cfg):
     return any(ex.lower() in name for ex in cfg.excluded_competitions)
 
 
-def evaluate(s: MarketSnapshot, cfg: Config) -> Alert | None:
+def evaluate(s: MarketSnapshot, cfg: Config, delta=None) -> Alert | None:
+    """Alert tylko wtedy, gdy w oknie NAGLE wpadła kasa na jedną stronę.
+
+    `delta` to history.Delta; None oznacza, że nie mamy jeszcze drugiego pomiaru
+    tego rynku – wtedy nie ma mowy o ruchu i nie ma sygnału.
+    """
     if is_excluded(s.competition, cfg):
         return None
     if not s.over_price or not s.under_price or s.over_price <= 1 or s.under_price <= 1:
         return None
+    if delta is None:
+        return None
 
-    reasons = []
-    score = 0.0
+    # --- wyzwalacz ---------------------------------------------------------
+    if delta.money_in < cfg.spike_min_money:
+        return None
+    if delta.inflow_ratio < cfg.spike_ratio:
+        return None
+    if abs(delta.prob_move) < cfg.spike_prob_move:
+        return None
+
     p_over, _ = model.implied_probs(s.over_price, s.under_price)
-    alert = Alert(snapshot=s, reasons=reasons, score=0.0, market_over_prob=p_over)
+    reasons = []
+    alert = Alert(snapshot=s, reasons=reasons, score=0.0, delta=delta,
+                  direction=delta.side, market_over_prob=p_over)
 
-    volume_ok = s.total_matched >= cfg.min_volume
-    if volume_ok:
-        reasons.append(f"obrót {money(s.total_matched)} >= {money(cfg.min_volume)}")
-        score += s.total_matched / cfg.min_volume
-
-    # Sygnał RATE – tylko gdy znamy wynik i minutę.
-    rate_hit = False
+    # --- kontekst z wyniku i minuty ---------------------------------------
     if s.minute is not None and s.home_goals is not None:
         goals = s.home_goals + s.away_goals
         k = model.goals_needed(s.line, goals)
         remaining = model.remaining_minutes(s.minute, s.first_half)
-        # Jeśli Over już wszedł albo zostało mało czasu, model jest bez sensu.
-        if k > 0 and remaining >= MIN_REMAINING:
-            alert.goals_needed = k
-            alert.remaining = remaining
-            alert.model_over_prob = model.model_over_prob(
-                s.line, goals, s.minute, s.first_half, cfg.goals_per_90)
-            base = model.baseline_lambda(s.minute, s.first_half, cfg.goals_per_90)
-            lam = model.implied_lambda(p_over, k)
-            if base > 0 and lam is not None:
-                alert.rate_ratio = lam / base
-                if alert.rate_ratio >= cfg.rate_ratio_high:
-                    rate_hit = True
-                    alert.direction = "over"
-                    reasons.append(f"kurs na Over za niski: rynek {p_over:.0%} vs model "
-                                   f"{alert.model_over_prob:.0%}")
-                    score += alert.rate_ratio
-                elif alert.rate_ratio <= cfg.rate_ratio_low and s.minute <= UNDER_MAX_MINUTE:
-                    rate_hit = True
-                    alert.direction = "under"
-                    reasons.append(f"kurs na Under za niski: rynek Over {p_over:.0%} vs model "
-                                   f"{alert.model_over_prob:.0%}")
-                    score += 1 / alert.rate_ratio
+        if k <= 0:
+            return None     # Over już wszedł, nie ma czego grać
+        if remaining < MIN_REMAINING:
+            return None     # za mało czasu, żeby gole zdążyły paść
+        alert.goals_needed = k
+        alert.remaining = remaining
+        alert.model_over_prob = model.model_over_prob(
+            s.line, goals, s.minute, s.first_half, cfg.goals_per_90)
+        base = model.baseline_lambda(s.minute, s.first_half, cfg.goals_per_90)
+        lam = model.implied_lambda(p_over, k)
+        if base > 0 and lam is not None:
+            alert.rate_ratio = lam / base
+            if alert.rate_ratio >= cfg.rate_ratio_high:
+                reasons.append(f"kurs wycenia {alert.rate_ratio:.1f}x normalne tempo goli "
+                               f"(rynek Over {p_over:.0%} vs model {alert.model_over_prob:.0%})")
+            elif alert.rate_ratio <= cfg.rate_ratio_low:
+                reasons.append(f"kurs wycenia {alert.rate_ratio:.1f}x normalnego tempa goli "
+                               f"(rynek Over {p_over:.0%} vs model {alert.model_over_prob:.0%})")
 
-    ratio_hit = False
-    if s.match_odds_matched is not None and s.match_odds_matched >= 0:
-        if s.total_matched > cfg.volume_vs_match_odds * max(s.match_odds_matched, 1):
-            ratio_hit = True
-            reasons.append("rynek goli ma dużo większy obrót niż 1X2")
-            score += 1
+    if s.match_odds_matched is not None and s.total_matched > (
+            cfg.volume_vs_match_odds * max(s.match_odds_matched, 1)):
+        reasons.append("rynek goli ma dużo większy obrót niż 1X2")
 
-    if volume_ok and (rate_hit or ratio_hit):
-        alert.score = round(score, 2)
-        return alert
-    return None
+    # Im gwałtowniejszy ruch, tym wyżej w kolejce.
+    alert.score = round(delta.inflow_ratio + abs(delta.prob_move) * 10
+                        + delta.money_in / cfg.spike_min_money, 2)
+    return alert

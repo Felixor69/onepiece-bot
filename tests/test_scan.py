@@ -1,18 +1,19 @@
-"""Co trafia na Discorda, a co tylko do logu."""
+"""Co trafia na Discorda przez pelna petle skanu."""
 from fixwatch import __main__ as main
-from fixwatch.detector import Config, evaluate
+from fixwatch.detector import Config
+from fixwatch.history import History
 
 
-def market(market_type, market_name, over, under, matched, event_id="1",
-           status="OPEN", inplay=True):
+def market(market_type, market_name, over, under, matched, event_id="1"):
     return {
         "market_id": f"1.{market_type}", "market_type": market_type,
         "market_name": market_name, "event_id": event_id,
-        "event_name": "Santa Clara U23 v Sporting Braga U23",
-        "competition": "Portuguese U23", "start_time": "2026-10-19T12:00:00Z",
-        "inplay": inplay, "status": status, "total_matched": matched,
-        "runners": [{"name": "Over 0.5 Goals", "last": over, "back": [over]},
-                    {"name": "Under 0.5 Goals", "last": under, "back": [under]}],
+        "event_name": "Union Cocle v Herrera FC",
+        "competition": "Panama Liga Panamena de Futbol",
+        "start_time": "2026-10-19T12:00:00Z", "inplay": True, "status": "OPEN",
+        "total_matched": matched,
+        "runners": [{"name": "Over 1.5 Goals", "last": over, "back": [over]},
+                    {"name": "Under 1.5 Goals", "last": under, "back": [under]}],
     }
 
 
@@ -22,69 +23,71 @@ def match_odds(matched, event_id="1"):
     return m
 
 
-# Prawdziwy przypadek z 19.10.2026 12:04 – normalny rynek, ktory alarmowal tylko
-# dlatego, ze 1X2 mialo malo pieniedzy.
-SANTA_CLARA = [market("OVER_UNDER_05", "Over/Under 0.5 Goals", 1.04, 21, 8721),
-               match_odds(1410)]
-SANTA_CLARA_STATE = {"1": {"minute": 2, "home": 0, "away": 0}}
+STATE = {"1": {"minute": 9, "home": 0, "away": 0}}
 
 
-def test_santa_clara_case_alerts_but_is_not_actionable():
-    snapshots = main.build_snapshots(SANTA_CLARA, SANTA_CLARA_STATE)
-    alert = evaluate(snapshots[0], Config())
-    assert alert is not None, "sygnal z obrotu nadal sie liczy"
-    assert not alert.actionable()
-    assert "kurs jest normalny" in alert.no_direction_reason()
-    assert "BEZ ZAGRANIA" in alert.format()
+def feed(over, under, matched):
+    return lambda: ([market("FIRST_HALF_GOALS_15", "First Half Goals 1.5", over, under,
+                            matched), match_odds(8000)], STATE)
 
 
-def test_scan_does_not_notify_without_a_side(monkeypatch, capsys):
+# Rynek spokojny, a potem nagly hajs na Over - dokladnie przypadek ze screena.
+SPOKOJNY = feed(2.10, 2.10, 18662)
+NAPLY = feed(1.70, 2.42, 31062)
+
+
+def test_first_scan_only_remembers(monkeypatch, capsys):
     sent = []
-    monkeypatch.setattr(main, "notify", lambda alert: sent.append(alert))
-    main.scan(lambda: (SANTA_CLARA, SANTA_CLARA_STATE), Config(), {})
-    assert sent == [], "normalny rynek nie moze iso na Discorda"
-    out = capsys.readouterr().out
-    assert "Bez zagrania, nie wysyłam" in out
-    assert "wysłanych: 0" in out
+    monkeypatch.setattr(main, "notify", lambda a: sent.append(a))
+    main.scan(SPOKOJNY, Config(), {}, History(), now=0)
+    assert sent == [], "pierwszy skan nie ma z czym porownac"
+    assert "wysłanych: 0" in capsys.readouterr().out
 
 
-def _fixy(over, matched):
-    """Rynek z anomalia: 0-2 w 78', Over 4.5 wyceniony absurdalnie wysoko."""
-    markets = [market("OVER_UNDER_45", "Over/Under 4.5 Goals", over, 1.02, matched),
-               match_odds(6896)]
-    return markets, {"1": {"minute": 78, "home": 0, "away": 2}}
-
-
-def test_scan_notifies_when_there_is_a_side(monkeypatch):
+def test_spike_between_scans_is_sent(monkeypatch):
     sent = []
-    monkeypatch.setattr(main, "notify", lambda alert: sent.append(alert))
-    main.scan(lambda: _fixy(21, 5681), Config(), {})
+    monkeypatch.setattr(main, "notify", lambda a: sent.append(a))
+    history, alerted = History(), {}
+    main.scan(SPOKOJNY, Config(), alerted, history, now=0)
+    main.scan(NAPLY, Config(), alerted, history, now=118)
     assert len(sent) == 1
-    assert sent[0].direction == "over"
-    assert 'BACK (niebieska kolumna) "Over 4.5 Goals" @ 21' in sent[0].format()
+    alert = sent[0]
+    assert alert.direction == "over"
+    assert "NAGŁY NAPŁYW KASY na OVER" in alert.format()
+    assert "w 118 s wpadło 12 400" in alert.format()
 
 
-def test_silent_alert_does_not_block_a_later_play(monkeypatch):
-    """Smieciowy alert nie moze zajac miejsca w dedupie i zablokowac zagrania."""
+def test_quiet_market_sends_nothing(monkeypatch):
+    """Duzy obrot bez ruchu - dawniej to wlasnie zasypywalo Discorda."""
     sent = []
-    monkeypatch.setattr(main, "notify", lambda alert: sent.append(alert))
-    alerted = {}
-    # Najpierw ten sam rynek bez kierunku, potem z anomalia. Over 4.5 po 7.0 przy 0-0
-    # w 2' to tempo 1.03x normy (fair ~7.64), czyli kurs zupelnie normalny.
-    normalny = [market("OVER_UNDER_45", "Over/Under 4.5 Goals", 7.0, 1.16, 8721),
-                match_odds(1410)]
-    main.scan(lambda: (normalny, SANTA_CLARA_STATE), Config(), alerted)
-    assert sent == [] and alerted == {}, "nie wyslane = nie zapisane w dedupie"
-    main.scan(lambda: _fixy(21, 8721), Config(), alerted)
-    assert len(sent) == 1, "zagranie musi przejsc, mimo wczesniejszego smiecia"
+    monkeypatch.setattr(main, "notify", lambda a: sent.append(a))
+    history, alerted = History(), {}
+    main.scan(NAPLY, Config(), alerted, history, now=0)
+    main.scan(feed(1.70, 2.42, 31120), Config(), alerted, history, now=60)
+    main.scan(feed(1.70, 2.42, 31180), Config(), alerted, history, now=120)
+    assert sent == []
 
 
-def test_dedup_still_holds_for_sent_alerts(monkeypatch):
+def test_cooldown_stops_repeating_the_same_spike(monkeypatch):
+    """Ten sam naply siedzi w oknie historii, wiec bez cooldownu poszedlby kilka razy."""
     sent = []
-    monkeypatch.setattr(main, "notify", lambda alert: sent.append(alert))
-    alerted = {}
-    main.scan(lambda: _fixy(21, 5681), Config(), alerted)
-    main.scan(lambda: _fixy(21, 5681), Config(), alerted)
-    assert len(sent) == 1, "bez podwojenia obrotu nie powtarzamy alertu"
-    main.scan(lambda: _fixy(21, 2 * 5681), Config(), alerted)
-    assert len(sent) == 2, "po podwojeniu obrotu alert leci ponownie"
+    monkeypatch.setattr(main, "notify", lambda a: sent.append(a))
+    history, alerted = History(), {}
+    main.scan(SPOKOJNY, Config(), alerted, history, now=0)
+    main.scan(NAPLY, Config(), alerted, history, now=118)
+    main.scan(feed(1.68, 2.44, 31300), Config(), alerted, history, now=148)
+    main.scan(feed(1.68, 2.44, 31400), Config(), alerted, history, now=178)
+    assert len(sent) == 1, "jedno zdarzenie = jedna wiadomosc"
+
+
+def test_new_spike_after_cooldown_is_sent(monkeypatch):
+    sent = []
+    monkeypatch.setattr(main, "notify", lambda a: sent.append(a))
+    history, alerted = History(), {}
+    main.scan(SPOKOJNY, Config(), alerted, history, now=0)
+    main.scan(NAPLY, Config(), alerted, history, now=118)
+    assert len(sent) == 1
+    # Po cooldownie kolejny gwaltowny naply to nowe zdarzenie i ma dojsc.
+    main.scan(feed(1.70, 2.42, 31500), Config(), alerted, history, now=600)
+    main.scan(feed(1.30, 3.60, 60000), Config(), alerted, history, now=700)
+    assert len(sent) == 2

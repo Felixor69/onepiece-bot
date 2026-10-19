@@ -1,6 +1,9 @@
+from dataclasses import replace
+
 from fixwatch import betsapi
 from fixwatch.__main__ import build_snapshots
 from fixwatch.detector import Config, evaluate
+from fixwatch.history import History
 
 
 def runner(name, last):
@@ -61,5 +64,14 @@ def test_betsapi_screenshot_case():
     assert (s.competition, s.minute, s.home_goals, s.over_price, s.under_price) == \
         ("Panama Liga Panamena", 9, 0, 1.7, 2.42)
     assert s.match_odds_matched == 8000
-    alert = evaluate(s, Config())
-    assert alert is not None and alert.rate_ratio > 1.9
+
+    # Sygnalem jest ruch, wiec potrzebny drugi pomiar: najpierw spokojny rynek,
+    # potem ten sam rynek po naplywie kasy.
+    history = History()
+    spokojny = replace(s, total_matched=18662, over_price=2.10, under_price=2.10)
+    assert history.update(spokojny, now=0) is None
+    alert = evaluate(s, Config(), history.update(s, now=118))
+    assert alert is not None
+    assert alert.direction == "over"
+    assert alert.rate_ratio > 1.9
+    assert alert.delta.money_in == 31062 - 18662
