@@ -12,8 +12,13 @@ dla trwających meczów i alarmuje, gdy:
 2. **Obrót jest duży** (domyślnie >= 5000) w lidze spoza topu (topowe ligi są pomijane).
 3. **Rynek goli ma co najmniej 2x większy obrót niż 1X2** tego samego meczu.
 
-Alert = (2) oraz (1) lub (3). Przykład ze screena (Panama, 0-0 w 9', Over 1.5 FH po 1.70):
+Sygnał = (2) oraz (1) lub (3). Przykład ze screena (Panama, 0-0 w 9', Over 1.5 FH po 1.70):
 rynek 59%, model 26% (fair ~3.85), obrót 31k.
+
+**Na Discorda idzie tylko sygnał z (1)**, bo tylko on mówi, która strona jest kupowana,
+czyli co właściwie zagrać. Sam duży obrót (2) i (3) bez anomalii w kursie zostaje w logu
+(`journalctl -u fixwatch`) jako `Bez zagrania, nie wysyłam` – w małych ligach rynek goli
+rutynowo ma więcej pieniędzy niż 1X2, więc jako powód alertu to był czysty szum.
 
 ### Co jest w alercie
 Alert podaje gotowe zagranie, a nie same liczby: nazwę zakładu z kuponu Betfair, kurs,

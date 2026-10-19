@@ -86,14 +86,26 @@ def scan(fetch, cfg, alerted):
     snapshots = build_snapshots(*fetch())
     alerts = [a for a in (evaluate(s, cfg) for s in snapshots) if a]
     alerts.sort(key=lambda a: a.score, reverse=True)
+    sent = 0
     for alert in alerts:
-        key = alert.snapshot.market_id
-        # Ponowny alert dla tego samego rynku dopiero gdy obrót się podwoi.
-        if key in alerted and alert.snapshot.total_matched < 2 * alerted[key]:
+        s = alert.snapshot
+        # Sam obrót nie mówi, co zagrać (np. rynek goli ma więcej kasy niż 1X2, ale kurs
+        # jest normalny). Taki sygnał zostaje w logu – na Discorda nie ma po co iść.
+        if not alert.actionable():
+            print(f"[INFO] Bez zagrania, nie wysyłam: {s.event_name} | {s.market_name}"
+                  f" | {alert.no_direction_reason()}")
             continue
-        alerted[key] = alert.snapshot.total_matched
+        key = s.market_id
+        # Ponowny alert dla tego samego rynku dopiero gdy obrót się podwoi. Zapisujemy
+        # tylko wysłane, żeby alert bez kierunku nie zablokował późniejszego zagrania
+        # na tym samym rynku.
+        if key in alerted and s.total_matched < 2 * alerted[key]:
+            continue
+        alerted[key] = s.total_matched
         notify(alert)
-    print(f"[INFO] Przeskanowano {len(snapshots)} rynków, alertów: {len(alerts)}")
+        sent += 1
+    print(f"[INFO] Przeskanowano {len(snapshots)} rynków, "
+          f"alertów: {len(alerts)}, wysłanych: {sent}")
 
 
 def demo():

@@ -112,19 +112,28 @@ class Alert:
         end = 45 if s.first_half else 90
         return min(s.minute + max(self.remaining // 2, 5), end)
 
+    def actionable(self):
+        """Czy jest z tego zakład: znamy stronę, na którą idzie kasa.
+
+        Bez tego alert nie ma po co iść na Discorda – sam obrót nie mówi, co zagrać.
+        """
+        return self.direction is not None
+
+    def no_direction_reason(self):
+        """Dlaczego nie znamy strony – do logu, nie na Discorda."""
+        s = self.snapshot
+        if s.minute is None or s.home_goals is None:
+            return "brak wyniku i minuty z BetsAPI"
+        if self.rate_ratio is None:
+            return "Over już wszedł albo za mało czasu do końca okresu"
+        return (f"kurs jest normalny (tempo {self.rate_ratio:.1f}x normy), "
+                f"zadziałał tylko sygnał z obrotu")
+
     def play_lines(self):
         """Konkret: co kliknąć, co musi się stać i kiedy uciekać."""
         s = self.snapshot
         if not self.direction:
-            powod = ("brak wyniku i minuty z serwisu Betfair"
-                     if s.minute is None or s.home_goals is None
-                     else "za mało czasu do końca okresu, model nie liczy")
-            return [
-                "NIE GRAJ NA ŚLEPO – nie wiadomo, na którą stronę idzie kasa",
-                f"   Powód: {powod}, zostaje sam sygnał z obrotu.",
-                "   Zrób tak: otwórz rynek i zobacz, po której stronie (Over czy Under)",
-                "   rośnie obrót i schodzi kurs – dopiero po tej stronie graj BACK.",
-            ]
+            return [f"BEZ ZAGRANIA – {self.no_direction_reason()}"]
 
         label, price = self.runner_label(), self.play_price()
         out = [f'ZAGRAJ: BACK (niebieska kolumna) "{label}" @ {price:g}',

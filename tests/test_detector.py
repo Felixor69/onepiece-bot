@@ -124,7 +124,9 @@ def test_no_direction_without_rate_signal():
     alert = evaluate(snap(home_goals=None, away_goals=None), Config())
     assert alert.direction is None
     assert alert.runner_label() is None and alert.play_price() is None
-    assert "NIE GRAJ NA ŚLEPO" in alert.format()
+    assert not alert.actionable()
+    assert "BEZ ZAGRANIA" in alert.format()
+    assert alert.no_direction_reason() == "brak wyniku i minuty z BetsAPI"
 
 
 def test_price_floor_never_below_one():
