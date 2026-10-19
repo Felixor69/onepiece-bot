@@ -169,9 +169,10 @@ def main():
         client = betsapi.BetsApiClient(os.environ["BETSAPI_TOKEN"])
         fetch = client.fetch
         # Limit BetsAPI to 3600 zapytan/h, a jeden skan to ~1 + 2x ceil(liczba meczow/10)
-        # zapytan, czyli przy kilkudziesieciu meczach ~11. Co 30 s mamy ~1300/h - z zapasem,
-        # a im czesciej patrzymy, tym szybciej widzimy naply.
-        default_interval = 30
+        # zapytan: przy 47 meczach w livie to 11, czyli co 45 s ~880/h - z zapasem.
+        # Limit nie jest tu wiazacy, wiazacy jest czas odpowiedzi: pelny fetch przy 47
+        # meczach (1297 rynkow) trwa ~30 s, wiec krocej niz 45 s nie ma sensu ustawiac.
+        default_interval = 45
     else:
         client = betfair.BetfairClient(
             app_key=os.environ["BETFAIR_APP_KEY"],
@@ -193,13 +194,20 @@ def main():
     print(f"[INFO] Startuję skaner nagłych napływów (źródło: {source}, "
           f"skan co {interval} s). Pierwszy skan tylko zapamiętuje stan rynków.")
     while True:
+        started = time.monotonic()
         try:
             scan(fetch, cfg, alerted, history, cooldown)
         except (requests.RequestException, RuntimeError, KeyError) as e:
             print(f"[ERROR] {e}")
         if args.once:
             break
-        time.sleep(interval)
+        # Sam skan trwa przy pełnym livie ~30 s, więc stały sleep dawałby kadencję dwa
+        # razy rzadszą od ustawionej. Dosypiamy tylko to, co z interwału zostało.
+        elapsed = time.monotonic() - started
+        if elapsed > interval:
+            print(f"[WARN] Skan zajął {elapsed:.0f} s, czyli więcej niż interwał "
+                  f"{interval} s – kadencję wyznacza teraz API, nie ustawienie")
+        time.sleep(max(0.0, interval - elapsed))
 
 
 if __name__ == "__main__":

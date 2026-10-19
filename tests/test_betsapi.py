@@ -75,3 +75,39 @@ def test_betsapi_screenshot_case():
     assert alert.direction == "over"
     assert alert.rate_ratio > 1.9
     assert alert.delta.money_in == 31062 - 18662
+
+
+def test_batched_survives_a_failed_batch(capsys):
+    """Padnieta paczka nie moze kosztowac pomiaru pozostalych meczow."""
+    import requests
+
+    client = betsapi.BetsApiClient("t")
+
+    class Flaky:
+        calls = 0
+
+        def get(self, url, params, timeout):
+            Flaky.calls += 1
+            if Flaky.calls == 1:
+                raise requests.ConnectionError("read timed out")
+            return FakeResponse({"success": 1, "results": [{"id": params["event_id"]}]})
+
+    client.session = Flaky()
+    out = client._batched("ex/event", [str(i) for i in range(20)])
+    assert len(out) == 1, "druga paczka musi przejsc, mimo padnietej pierwszej"
+    assert "nie wyszła" in capsys.readouterr().out
+
+
+def test_request_timeout_is_generous():
+    """Przy pelnym livie jedna paczka odpowiada ~6 s, a 30 s konczylo sie timeoutem."""
+    seen = {}
+
+    class Timed:
+        def get(self, url, params, timeout):
+            seen["timeout"] = timeout
+            return FakeResponse({"success": 1, "results": []})
+
+    client = betsapi.BetsApiClient("t")
+    client.session = Timed()
+    client.inplay_events()
+    assert seen["timeout"] >= 60

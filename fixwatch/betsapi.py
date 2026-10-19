@@ -10,6 +10,9 @@ from . import betfair
 API_URL = "https://api.b365api.com/v1/betfair/"
 SOCCER = 1
 BATCH = 10
+# Wieczorem jedno zapytanie o 10 meczów zwraca kilkaset rynków i odpowiada ~6 s, więc
+# 30 s regularnie kończyło się timeoutem na pełnym livie (47 meczów, 1297 rynków).
+REQUEST_TIMEOUT = 60
 
 
 def _obj(value):
@@ -23,7 +26,8 @@ class BetsApiClient:
         self.session = requests.Session()
 
     def _get(self, path, **params):
-        r = self.session.get(API_URL + path, params={"token": self.token, **params}, timeout=30)
+        r = self.session.get(API_URL + path, params={"token": self.token, **params},
+                             timeout=REQUEST_TIMEOUT)
         r.raise_for_status()
         body = r.json()
         if not body.get("success"):
@@ -41,10 +45,21 @@ class BetsApiClient:
             page += 1
 
     def _batched(self, path, event_ids):
+        """Pobiera po `BATCH` meczów. Padnięta paczka nie przerywa całości.
+
+        Przy pełnym livie jedna paczka to kilkaset rynków i bywa, że API nie zdąży.
+        Wywalenie wtedy całego skanu kosztowałoby pomiar WSZYSTKICH rynków, czyli dziurę
+        w historii i przegapiony napływ – a te mecze, które się pobrały, są w porządku.
+        """
         results = []
         ids = list(event_ids)
         for i in range(0, len(ids), BATCH):
-            results += self._get(path, event_id=",".join(ids[i:i + BATCH])).get("results", [])
+            batch = ids[i:i + BATCH]
+            try:
+                results += self._get(path, event_id=",".join(batch)).get("results", [])
+            except (requests.RequestException, RuntimeError, ValueError) as e:
+                print(f"[WARN] BetsAPI {path}: paczka {i // BATCH + 1} nie wyszła "
+                      f"({type(e).__name__}), lecę dalej bez tych {len(batch)} meczów")
         return results
 
     def fetch(self):
