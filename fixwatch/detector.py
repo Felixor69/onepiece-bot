@@ -72,6 +72,9 @@ class MarketSnapshot:
     away_goals: int | None = None
     match_odds_matched: float | None = None   # obrót na 1X2 tego meczu
     url: str = ""
+    # Klucz do rozliczenia typu po meczu: betfair/timeline?event_id=... daje gole z
+    # minutami. Bez tego pola nie da sie policzyc, czy alert mial racje.
+    event_id: str = ""
 
 
 @dataclass

@@ -20,6 +20,7 @@ from . import betfair, betsapi
 from .detector import Config, MarketSnapshot, evaluate, is_excluded, money
 from .history import History
 from .notify import notify
+from .research import ResearchLog
 
 # Ligi z dużą płynnością – tam duży obrót jest normalny, więc je pomijamy.
 DEFAULT_EXCLUDED = [
@@ -104,18 +105,24 @@ def build_snapshots(markets, states):
             home_goals=home, away_goals=away,
             match_odds_matched=match_odds.get(m["event_id"]),
             url=betfair.MARKET_URL.format(m["market_id"]),
+            event_id=str(m["event_id"]),
         ))
     return snapshots
 
 
-def scan(fetch, cfg, alerted, history, cooldown=DEFAULT_COOLDOWN, now=None):
+def scan(fetch, cfg, alerted, history, cooldown=DEFAULT_COOLDOWN, now=None,
+         research=None):
     now = time.monotonic() if now is None else now
     snapshots = build_snapshots(*fetch())
     history.forget([s.market_id for s in snapshots])
 
-    alerts, moves = [], []
+    alerts, moves, zapisane = [], [], 0
     for s in snapshots:
         delta = history.update(s, now)
+        # Log badawczy lapie szeroko i niezaleznie od filtrow alertu - to z niego
+        # policzymy, ktory prog sie oplaca. Na Discorda to nie idzie.
+        if research is not None and research.record(s, delta):
+            zapisane += 1
         # Do logu kalibracyjnego biorą się tylko ligi, które bot w ogóle rozważa.
         # Inaczej raportowałby napływy z Serie A (30 tys. przy ruchu 0%), która jest
         # wykluczona – i wychodziłoby z tego, że progi są o rząd za niskie.
@@ -138,7 +145,7 @@ def scan(fetch, cfg, alerted, history, cooldown=DEFAULT_COOLDOWN, now=None):
         notify(alert)
         sent += 1
     print(f"[INFO] Przeskanowano {len(snapshots)} rynków (w pamięci {len(history)}), "
-          f"napływów: {len(alerts)}, wysłanych: {sent}")
+          f"napływów: {len(alerts)}, wysłanych: {sent}, do badań: {zapisane}")
     # Największy ruch w tym skanie trafia do logu także wtedy, gdy nie przebił progów.
     # Dzięki temu journal sam zbiera dane do kalibracji SPIKE_* – bez tego nie da się
     # odpowiedzieć, czy progi są za wysokie, czy po prostu nic się nie dzieje.
@@ -207,6 +214,7 @@ def main():
     interval = int(env_float("SCAN_INTERVAL", default_interval))
     cooldown = env_float("ALERT_COOLDOWN", DEFAULT_COOLDOWN)
     history = History(window=env_float("SPIKE_WINDOW", 180))
+    research = ResearchLog()
     alerted = {}
     strony = {"over": "tylko Over", "under": "tylko Under", "both": "Over i Under"}
     # Kwotę formatuje money(), a nie replace(",", " ") na całym zdaniu – inaczej
@@ -215,10 +223,13 @@ def main():
           f"skan co {interval} s, {strony[cfg.sides]}, "
           f"napływ od {money(cfg.spike_min_money)}, kurs od {cfg.min_price:g}). "
           f"Pierwszy skan tylko zapamiętuje stan rynków.")
+    if research.enabled():
+        print(f"[INFO] Log badawczy: {research.path}, zapisuję napływy od "
+              f"{money(research.min_money)} (niezależnie od filtrów Discorda).")
     while True:
         started = time.monotonic()
         try:
-            scan(fetch, cfg, alerted, history, cooldown)
+            scan(fetch, cfg, alerted, history, cooldown, research=research)
         except (requests.RequestException, RuntimeError, KeyError) as e:
             print(f"[ERROR] {e}")
         if args.once:

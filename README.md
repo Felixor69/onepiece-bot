@@ -49,12 +49,38 @@ niż 15 minut (gole nie zdążą paść) ani gdy kurs jest krótszy niż `MIN_PR
 sekund (domyślnie 300) – ten sam napływ siedzi jeszcze w oknie historii, więc bez tego jedno
 zdarzenie poszłoby kilka razy.
 
+### Log badawczy (zbieramy szeroko, alarmujemy wąsko)
+Progi, które chronią przed stratą, zabijają próbkę: przy `SIDES=over` i napływie od 10000
+wpada praktycznie zero zdarzeń na dzień, więc nie ma z czego policzyć, który próg się
+opłaca. Dlatego **każdy** napływ od `RESEARCH_MIN_MONEY` (2000) ląduje jako wiersz JSONL
+w `RESEARCH_LOG` (domyślnie `/var/lib/fixwatch/spikes.jsonl`) – niezależnie od strony,
+kursu i progu kwotowego. Na Discorda to nie idzie; tam dalej trafia tylko to, co przeszło
+pełne filtry.
+
+Wiersz trzyma `event_id` (klucz do rozliczenia typu przez `betfair/timeline`) oraz kursy
+**obu** stron, żeby dało się policzyć również wariant przeciwny (fade) bez zmiany tego,
+co bot wysyła.
+
 ### Czego ten bot NIE udowodnił
 Pierwszy backtest (19.10.2026, 43 typy rozstrzygnięte na faktycznych wynikach, stawka 1 j.,
 podatek 12%) wyszedł **ujemnie: weszło 40%, ale P&L −17.68 j., ROI −41%**. Co gorsza im
 większy napływ, tym gorzej: przy napływie ≥9000 trafność spadła do 25%, a przy napływie
 ≥9000 i kursie ≥1.50 było **0 na 5**. Wielka kasa szła na Under przy 0-0, a mecze kończyły
 się 2-3 i 3-4. Rozbicie per strona: Over ROI −48%, Under −38%.
+
+Co ciekawsze, kierunek **przeciwny** wyszedł dodatnio: granie PRZECIW napływom dało na tej
+samej próbce medianę ROI +19% (bootstrap losujący mecze, bo 43 typy to tylko 24 mecze i
+typy z jednego meczu rozstrzygają się razem). Ale 90% przedział to [−12%, +54%], czyli
+zawiera zero – to trop, nie przewaga. Zawężenie ROI do ±5% wymaga ~400 niezależnych
+meczów, czyli 2–3 tygodni zbierania przy luźnych progach.
+
+Arytmetyka kosztów waży tu więcej niż dobór progu. Przy kursie 2.00 i podatku 12% od
+stawki trzeba trafiać 56.8% zamiast 50%, czyli być lepszym od rynku o **6.8 pkt proc.**;
+przy prowizji giełdy 5% od wygranej ten próg to **1.3 pkt proc.** Zawodowcy żyją z 2–5
+pkt proc. przewagi, więc pod podatkiem od stawki poprzeczka jest poza ich zasięgiem. Ma
+to praktyczny wniosek: cała ta analiza stoi na kursach Betfaira, więc jeśli zagranie ma
+trafić do bukmachera z innym cennikiem i wolniejszym kursem, zmierzona przewaga może tam
+nie istnieć.
 
 To podważa założenie, na którym bot stoi. 43 typy z jednego dnia to za mało na wyrok, ale
 za dużo, żeby je zignorować – **nie graj z tych alertów realnymi pieniędzmi, dopóki nie ma
