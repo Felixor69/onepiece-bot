@@ -45,3 +45,10 @@ def test_sukces_zeruje_licznik():
     w.record(False, "x", 1)
     assert w.record(True, "", 2) is None
     assert w.record(False, "x", 3) is None, "licznik liczy od nowa"
+
+
+def test_spokojna_noc_nie_jest_awaria():
+    """Realny falszywy alarm z 20.10 06:09: zero meczow w livie to normalny stan swiata."""
+    w = Watchdog(fails_before_alert=3)
+    for t in range(10):
+        assert w.record(True, "", now=t * 45) is None

@@ -255,9 +255,11 @@ def main():
     while True:
         started = time.monotonic()
         try:
-            widziane = scan(fetch, cfg, alerted, history, cooldown, research=research)
-            ok = widziane > 0
-            powod = "skan nie zwrócił ani jednego rynku"
+            scan(fetch, cfg, alerted, history, cooldown, research=research)
+            # Zero rynkow to NIE awaria: nocą i rano nie ma meczów w trakcie i API
+            # uczciwie zwraca pustą listę. Awarią jest dopiero wyjątek – a całkowite
+            # padnięcie paczek podnosi go teraz samo (betsapi._batched).
+            ok, powod = True, ""
         except (requests.RequestException, RuntimeError, KeyError) as e:
             ok, powod = False, f"{type(e).__name__}: {e}"
             print(f"[ERROR] {e}")

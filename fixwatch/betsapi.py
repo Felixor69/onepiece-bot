@@ -53,13 +53,23 @@ class BetsApiClient:
         """
         results = []
         ids = list(event_ids)
+        paczek = padlych = 0
+        ostatni_blad = None
         for i in range(0, len(ids), BATCH):
             batch = ids[i:i + BATCH]
+            paczek += 1
             try:
                 results += self._get(path, event_id=",".join(batch)).get("results", [])
             except (requests.RequestException, RuntimeError, ValueError) as e:
+                padlych += 1
+                ostatni_blad = e
                 print(f"[WARN] BetsAPI {path}: paczka {i // BATCH + 1} nie wyszła "
                       f"({type(e).__name__}), lecę dalej bez tych {len(batch)} meczów")
+        # Czesc paczek moze paobo i to przezyjemy, ale gdy padna WSZYSTKIE, to nie jest
+        # cichy brak danych - to awaria, i czujka musi sie o niej dowiedziec.
+        if paczek and padlych == paczek:
+            raise RuntimeError(
+                f"BetsAPI {path}: padly wszystkie {paczek} paczki ({ostatni_blad})")
         return results
 
     def fetch(self):

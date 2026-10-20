@@ -111,3 +111,32 @@ def test_request_timeout_is_generous():
     client.session = Timed()
     client.inplay_events()
     assert seen["timeout"] >= 60
+
+
+def test_calkowite_padniecie_paczek_to_awaria():
+    """Czesc paczek moze paobo, ale gdy padna wszystkie, czujka musi sie dowiedziec."""
+    import pytest
+    import requests
+
+    client = betsapi.BetsApiClient("t")
+
+    class Martwy:
+        def get(self, url, params, timeout):
+            raise requests.ConnectionError("read timed out")
+
+    client.session = Martwy()
+    with pytest.raises(RuntimeError, match="padly wszystkie"):
+        client._batched("ex/event", [str(i) for i in range(20)])
+
+
+def test_pusta_lista_meczow_to_nie_awaria():
+    """Noca nie ma meczow w trakcie - API zwraca pusta liste i to jest poprawne."""
+    class Pusty:
+        def get(self, url, params, timeout):
+            return FakeResponse({"success": 1, "results": [],
+                                 "pager": {"page": 1, "per_page": 50, "total": 0}})
+
+    client = betsapi.BetsApiClient("t")
+    client.session = Pusty()
+    assert client.inplay_events() == []
+    assert client._batched("ex/event", []) == [], "brak paczek to tez nie awaria"
